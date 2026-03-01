@@ -40,6 +40,10 @@ enum Commands {
         /// Subdirectory under notes/
         #[arg(long)]
         dir: Option<String>,
+
+        /// Set note body directly (skips template)
+        #[arg(long)]
+        content: Option<String>,
     },
 
     /// Open a note in $EDITOR
@@ -205,15 +209,26 @@ fn main() -> Result<()> {
             no_edit,
             template,
             dir,
+            content,
         } => {
             let vault_path = vault::resolve_vault()?;
+            // Read from stdin when piped; stdin content implies no-edit
+            let (resolved_content, resolved_no_edit) = if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                (Some(content.unwrap_or(buf)), true)
+            } else {
+                (content, no_edit)
+            };
             commands::new::run(
                 &vault_path,
                 commands::new::NewOptions {
                     title,
-                    no_edit,
+                    no_edit: resolved_no_edit,
                     template,
                     dir,
+                    content: resolved_content,
                 },
             )?;
         }

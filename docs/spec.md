@@ -247,6 +247,17 @@ Create a new note.
 - `--no-edit` — create without opening editor
 - `--template <name>` — use a specific template
 - `--dir <subdir>` — create in `notes/<subdir>/`
+- `--content <text>` — set the note body directly (skips template)
+
+**Stdin support:** If stdin is not a terminal (i.e. data is piped), the piped content is used as the note body. This implies `--no-edit`.
+
+```sh
+# Pipe file contents as the note body
+cat some_file | granite new --dir logs xxx_log
+
+# Inline via flag
+granite new --dir logs --content "$(cat some_file)" xxx_log
+```
 
 #### `granite edit <query>`
 

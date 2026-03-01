@@ -27,6 +27,7 @@ pub fn run(vault_path: &Path) -> Result<()> {
                 no_edit: false,
                 template: None,
                 dir: Some("daily".to_string()),
+                content: None,
             },
         )?;
     }

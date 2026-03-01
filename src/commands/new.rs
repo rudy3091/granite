@@ -10,6 +10,7 @@ pub struct NewOptions {
     pub no_edit: bool,
     pub template: Option<String>,
     pub dir: Option<String>,
+    pub content: Option<String>,
 }
 
 pub fn run(vault_path: &std::path::Path, opts: NewOptions) -> Result<()> {
@@ -36,25 +37,30 @@ pub fn run(vault_path: &std::path::Path, opts: NewOptions) -> Result<()> {
         bail!("Note already exists: {}", note_path.display());
     }
 
-    // Build content from template or default
-    let template_name = opts
-        .template
-        .as_deref()
-        .unwrap_or(&config.defaults.template);
-    let template_path = vault_path
-        .join("templates")
-        .join(format!("{}.md", template_name));
+    // Build body: explicit content wins over template
+    let body = match opts.content {
+        Some(c) => c,
+        None => {
+            let template_name = opts
+                .template
+                .as_deref()
+                .unwrap_or(&config.defaults.template);
+            let template_path = vault_path
+                .join("templates")
+                .join(format!("{}.md", template_name));
 
-    let body = if template_path.exists() {
-        let tmpl = std::fs::read_to_string(&template_path)?;
-        tmpl.replace("{{ title }}", &title)
-    } else {
-        format!("# {}\n\n", title)
+            if template_path.exists() {
+                let tmpl = std::fs::read_to_string(&template_path)?;
+                tmpl.replace("{{ title }}", &title)
+            } else {
+                format!("# {}\n\n", title)
+            }
+        }
     };
 
     let fm = frontmatter::new_frontmatter(&title);
-    let content = frontmatter::serialize(&fm, &body);
-    std::fs::write(&note_path, &content)?;
+    let file_content = frontmatter::serialize(&fm, &body);
+    std::fs::write(&note_path, &file_content)?;
 
     println!("Created {}", note_path.display());
 

@@ -105,6 +105,59 @@ fn test_new_duplicate_note_fails() {
         .stderr(predicate::str::contains("Note already exists"));
 }
 
+
+#[test]
+fn test_new_with_content_flag() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Content Note", "--no-edit", "--content", "Hello from content flag."])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created"));
+
+    let content = fs::read_to_string(dir.path().join("notes/content-note.md")).unwrap();
+    assert!(content.contains("Hello from content flag."), "note body should contain provided content");
+    assert!(!content.contains("# Content Note\n\n"), "template heading should not be used");
+}
+
+#[test]
+fn test_new_with_stdin_content() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Stdin Note", "--no-edit"])
+        .write_stdin("Hello from stdin.")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created"));
+
+    let content = fs::read_to_string(dir.path().join("notes/stdin-note.md")).unwrap();
+    assert!(content.contains("Hello from stdin."), "note body should contain stdin content");
+}
+
+#[test]
+fn test_new_stdin_implies_no_edit() {
+    // When stdin is piped, the note is created without opening an editor
+    // (no-edit is implied). We verify this by checking the note is created
+    // successfully when piping — if it tried to open $EDITOR in a non-interactive
+    // context it would fail.
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Piped Note"])
+        .write_stdin("Piped body content.")
+        .env("EDITOR", "false") // "false" binary exits non-zero — would fail if invoked
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(dir.path().join("notes/piped-note.md")).unwrap();
+    assert!(content.contains("Piped body content."));
+}
+
 // ─── list ────────────────────────────────────────────────────────────────────
 
 #[test]
