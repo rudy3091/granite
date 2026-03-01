@@ -50,6 +50,10 @@ enum Commands {
     Edit {
         /// Fuzzy search query
         query: String,
+
+        /// Append piped stdin to the note (skips editor)
+        #[arg(long)]
+        append: bool,
     },
 
     /// Print a note's content to stdout
@@ -233,9 +237,22 @@ fn main() -> Result<()> {
             )?;
         }
 
-        Commands::Edit { query } => {
+        Commands::Edit { query, append } => {
             let vault_path = vault::resolve_vault()?;
-            commands::edit::run(&vault_path, &query)?;
+            let stdin_content = if append && !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                if buf.is_empty() { None } else { Some(buf) }
+            } else {
+                None
+            };
+            commands::edit::run(
+                &vault_path,
+                &query,
+                commands::edit::EditOptions { append },
+                stdin_content,
+            )?;
         }
 
         Commands::View {

@@ -527,6 +527,70 @@ fn test_serve_kill_stale_pid_file() {
     assert!(!pid_file.exists(), "stale PID file should be removed");
 }
 
+// ─── edit --append ────────────────────────────────────────────────────────────
+
+#[test]
+fn test_edit_append_via_stdin() {
+    let dir = init_vault();
+
+    // Create a note with a known body
+    let note_path = dir.path().join("notes/append-target.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: Append Target\nmodified: 2020-01-01T00:00:00\n---\n\n# Append Target\n\nOriginal body.\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "append-target"])
+        .write_stdin("appended line\n")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&note_path).unwrap();
+    assert!(content.contains("Original body."), "original body must be preserved");
+    assert!(content.contains("appended line"), "new text must be appended");
+    // modified timestamp should be updated (not still 2020-01-01)
+    assert!(!content.contains("2020-01-01T00:00:00"), "modified should be updated");
+}
+
+#[test]
+fn test_edit_append_without_stdin_fails() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/no-stdin-note.md");
+    fs::write(&note_path, "---\ntitle: No Stdin\n---\n\n# No Stdin\n").unwrap();
+
+    // No write_stdin → stdin is not piped → should fail with clear error
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "no-stdin-note"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--append requires piped stdin"));
+}
+
+#[test]
+fn test_edit_append_ambiguous_query_fails() {
+    let dir = init_vault();
+
+    // Two notes that share a common prefix so "log" matches both
+    let note1 = dir.path().join("notes/log-alpha.md");
+    fs::write(&note1, "---\ntitle: Log Alpha\n---\n\n# Log Alpha\n").unwrap();
+
+    let note2 = dir.path().join("notes/log-beta.md");
+    fs::write(&note2, "---\ntitle: Log Beta\n---\n\n# Log Beta\n").unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "log"])
+        .write_stdin("some content\n")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Ambiguous"));
+}
+
 // ─── rename ──────────────────────────────────────────────────────────────────
 
 #[test]
