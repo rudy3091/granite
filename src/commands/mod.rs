@@ -7,5 +7,6 @@ pub mod list;
 pub mod new;
 pub mod rename;
 pub mod search;
+pub mod serve;
 pub mod sync;
 pub mod tags;

@@ -124,6 +124,20 @@ enum Commands {
         #[command(subcommand)]
         subcommand: Option<ContextCommands>,
     },
+
+    /// Start a local web server to browse notes in a browser
+    Serve {
+        /// Port to listen on
+        #[arg(long, default_value_t = 3000)]
+        port: u16,
+    },
+
+    /// Internal: run the web server in the foreground (invoked by `granite serve`)
+    #[command(hide = true)]
+    ServeFg {
+        vault_path: String,
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -256,6 +270,18 @@ fn main() -> Result<()> {
         Commands::Rename { old, new } => {
             let vault_path = vault::resolve_vault()?;
             commands::rename::run(&vault_path, &old, &new)?;
+        }
+
+        Commands::Serve { port } => {
+            let vault_path = vault::resolve_vault()?;
+            commands::serve::run(&vault_path, port)?;
+        }
+
+        Commands::ServeFg { vault_path, port } => {
+            let vp = std::path::PathBuf::from(&vault_path);
+            let index = index::Index::build(&vp)?;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(commands::serve::run_daemon(vp, port, index))?;
         }
 
         Commands::Context { subcommand } => {

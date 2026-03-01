@@ -18,7 +18,7 @@ pub fn parse(content: &str) -> (Option<HashMap<String, Value>>, &str) {
         let yaml_str = &after_first[..end_pos];
         let body_start = end_pos + 4; // "\n---".len()
         let body = &after_first[body_start..];
-        let body = body.strip_prefix('\n').unwrap_or(body);
+        let body = body.trim_start_matches('\n');
 
         match serde_yaml::from_str::<HashMap<String, Value>>(yaml_str) {
             Ok(fm) => (Some(fm), body),
@@ -113,5 +113,19 @@ mod tests {
         let (fm, body) = parse(content);
         assert!(fm.is_none());
         assert_eq!(body, content);
+    }
+
+    #[test]
+    fn test_update_modified_preserves_single_blank_line() {
+        let content = "---\ntitle: Test\n---\n\n# Body\n\nContent here.\n";
+        let updated = update_modified_in_content(content).unwrap();
+        assert!(
+            updated.contains("---\n\n# Body"),
+            "should have exactly one blank line between frontmatter and body"
+        );
+        assert!(
+            !updated.contains("---\n\n\n"),
+            "should not have double blank line after frontmatter"
+        );
     }
 }
