@@ -10,3 +10,4 @@ pub mod search;
 pub mod serve;
 pub mod sync;
 pub mod tags;
+pub mod view;

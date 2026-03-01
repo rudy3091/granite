@@ -363,6 +363,84 @@ fn test_links_forward_and_backlinks() {
         .stdout(predicate::str::contains("Alpha").or(predicate::str::contains("alpha")));
 }
 
+// ─── view ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_view_prints_content() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/view-test.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: View Test\n---\n\n# View Test\n\nHello from view.\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["view", "view-test"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("View Test"))
+        .stdout(predicate::str::contains("Hello from view."));
+}
+
+#[test]
+fn test_view_no_frontmatter() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/view-fm.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: FM Note\n---\n\n# FM Note\n\nBody only.\n",
+    )
+    .unwrap();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["view", "view-fm", "--no-frontmatter"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("Body only."), "body should be present");
+    assert!(!stdout.contains("title:"), "frontmatter should be stripped");
+}
+
+#[test]
+fn test_view_no_match() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["view", "nonexistent_note_zzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No notes matching"));
+}
+
+#[test]
+fn test_view_fuzzy_match() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/fuzzy-view-note.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: Fuzzy View Note\n---\n\n# Fuzzy View Note\n\nFuzzy content.\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["view", "fuzzy-view"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Fuzzy content."));
+}
+
 // ─── serve kill ──────────────────────────────────────────────────────────────
 
 #[test]

@@ -48,6 +48,16 @@ enum Commands {
         query: String,
     },
 
+    /// Print a note's content to stdout
+    View {
+        /// Fuzzy search query
+        query: String,
+
+        /// Strip frontmatter, print only the body
+        #[arg(long)]
+        no_frontmatter: bool,
+    },
+
     /// List all notes
     List {
         /// Filter by tag
@@ -211,6 +221,14 @@ fn main() -> Result<()> {
         Commands::Edit { query } => {
             let vault_path = vault::resolve_vault()?;
             commands::edit::run(&vault_path, &query)?;
+        }
+
+        Commands::View {
+            query,
+            no_frontmatter,
+        } => {
+            let vault_path = vault::resolve_vault()?;
+            commands::view::run(&vault_path, &query, commands::view::ViewOptions { no_frontmatter })?;
         }
 
         Commands::List { tag, sort, tree } => {
