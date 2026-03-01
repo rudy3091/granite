@@ -1,0 +1,17 @@
+[package]
+name = "granite"
+version = "0.1.0"
+edition = "2021"
+description = "A terminal-first markdown knowledge base with git-synced persistence"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+toml = "0.8"
+pulldown-cmark = { version = "0.12", features = ["html"] }
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2"
+anyhow = "1"
