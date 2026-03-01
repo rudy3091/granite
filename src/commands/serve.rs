@@ -25,6 +25,52 @@ struct AppState {
 
 // ─── Public entry points ────────────────────────────────────────────────────
 
+/// User-facing: stop the currently running daemon by sending SIGTERM.
+pub fn kill(vault_path: &Path) -> Result<()> {
+    let pid_file = vault_path.join(".granite").join("serve.pid");
+
+    if !pid_file.exists() {
+        bail!(
+            "No running Granite server found (no PID file at {}).",
+            pid_file.display()
+        );
+    }
+
+    let pid_str = std::fs::read_to_string(&pid_file).unwrap_or_default();
+    let pid: u32 = pid_str.trim().parse().unwrap_or(0);
+
+    if pid == 0 {
+        let _ = std::fs::remove_file(&pid_file);
+        bail!("PID file is corrupt. Removed it.");
+    }
+
+    if !is_process_running(pid) {
+        let _ = std::fs::remove_file(&pid_file);
+        bail!(
+            "Server process (PID {}) is not running. Removed stale PID file.",
+            pid
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        let status = std::process::Command::new("kill")
+            .arg(pid.to_string())
+            .status()?;
+        if !status.success() {
+            bail!("Failed to stop server process (PID {}).", pid);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        bail!("granite serve kill is only supported on Unix systems.");
+    }
+
+    let _ = std::fs::remove_file(&pid_file);
+    println!("Granite server (PID {}) stopped.", pid);
+    Ok(())
+}
+
 /// User-facing: validate port, check for running server, spawn background daemon.
 pub fn run(vault_path: &Path, port: u16) -> Result<()> {
     let pid_file = vault_path.join(".granite").join("serve.pid");

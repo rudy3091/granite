@@ -127,6 +127,9 @@ enum Commands {
 
     /// Start a local web server to browse notes in a browser
     Serve {
+        #[command(subcommand)]
+        subcommand: Option<ServeCommands>,
+
         /// Port to listen on
         #[arg(long, default_value_t = 3000)]
         port: u16,
@@ -138,6 +141,12 @@ enum Commands {
         vault_path: String,
         port: u16,
     },
+}
+
+#[derive(Subcommand)]
+enum ServeCommands {
+    /// Stop the currently running server daemon
+    Kill,
 }
 
 #[derive(Subcommand)]
@@ -272,9 +281,12 @@ fn main() -> Result<()> {
             commands::rename::run(&vault_path, &old, &new)?;
         }
 
-        Commands::Serve { port } => {
+        Commands::Serve { subcommand, port } => {
             let vault_path = vault::resolve_vault()?;
-            commands::serve::run(&vault_path, port)?;
+            match subcommand {
+                None => commands::serve::run(&vault_path, port)?,
+                Some(ServeCommands::Kill) => commands::serve::kill(&vault_path)?,
+            }
         }
 
         Commands::ServeFg { vault_path, port } => {

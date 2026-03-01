@@ -363,6 +363,39 @@ fn test_links_forward_and_backlinks() {
         .stdout(predicate::str::contains("Alpha").or(predicate::str::contains("alpha")));
 }
 
+// ─── serve kill ──────────────────────────────────────────────────────────────
+
+#[test]
+fn test_serve_kill_no_pid_file() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["serve", "kill"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No running Granite server found"));
+}
+
+#[test]
+fn test_serve_kill_stale_pid_file() {
+    let dir = init_vault();
+
+    // Write a PID that is definitely not running
+    let pid_file = dir.path().join(".granite/serve.pid");
+    fs::write(&pid_file, "99999999").unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["serve", "kill"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not running").or(predicate::str::contains("stale")));
+
+    // PID file should have been cleaned up
+    assert!(!pid_file.exists(), "stale PID file should be removed");
+}
+
 // ─── rename ──────────────────────────────────────────────────────────────────
 
 #[test]
