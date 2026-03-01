@@ -15,3 +15,8 @@ regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2"
 anyhow = "1"
+
+[dev-dependencies]
+assert_cmd = "2.1"
+predicates = "3"
+tempfile = "3"
