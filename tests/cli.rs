@@ -105,6 +105,59 @@ fn test_new_duplicate_note_fails() {
         .stderr(predicate::str::contains("Note already exists"));
 }
 
+
+#[test]
+fn test_new_with_content_flag() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Content Note", "--no-edit", "--content", "Hello from content flag."])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created"));
+
+    let content = fs::read_to_string(dir.path().join("notes/content-note.md")).unwrap();
+    assert!(content.contains("Hello from content flag."), "note body should contain provided content");
+    assert!(!content.contains("# Content Note\n\n"), "template heading should not be used");
+}
+
+#[test]
+fn test_new_with_stdin_content() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Stdin Note", "--no-edit"])
+        .write_stdin("Hello from stdin.")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created"));
+
+    let content = fs::read_to_string(dir.path().join("notes/stdin-note.md")).unwrap();
+    assert!(content.contains("Hello from stdin."), "note body should contain stdin content");
+}
+
+#[test]
+fn test_new_stdin_implies_no_edit() {
+    // When stdin is piped, the note is created without opening an editor
+    // (no-edit is implied). We verify this by checking the note is created
+    // successfully when piping — if it tried to open $EDITOR in a non-interactive
+    // context it would fail.
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Piped Note"])
+        .write_stdin("Piped body content.")
+        .env("EDITOR", "false") // "false" binary exits non-zero — would fail if invoked
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(dir.path().join("notes/piped-note.md")).unwrap();
+    assert!(content.contains("Piped body content."));
+}
+
 // ─── list ────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -363,6 +416,84 @@ fn test_links_forward_and_backlinks() {
         .stdout(predicate::str::contains("Alpha").or(predicate::str::contains("alpha")));
 }
 
+// ─── view ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_view_prints_content() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/view-test.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: View Test\n---\n\n# View Test\n\nHello from view.\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["view", "view-test"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("View Test"))
+        .stdout(predicate::str::contains("Hello from view."));
+}
+
+#[test]
+fn test_view_no_frontmatter() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/view-fm.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: FM Note\n---\n\n# FM Note\n\nBody only.\n",
+    )
+    .unwrap();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["view", "view-fm", "--no-frontmatter"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("Body only."), "body should be present");
+    assert!(!stdout.contains("title:"), "frontmatter should be stripped");
+}
+
+#[test]
+fn test_view_no_match() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["view", "nonexistent_note_zzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No notes matching"));
+}
+
+#[test]
+fn test_view_fuzzy_match() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/fuzzy-view-note.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: Fuzzy View Note\n---\n\n# Fuzzy View Note\n\nFuzzy content.\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["view", "fuzzy-view"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Fuzzy content."));
+}
+
 // ─── serve kill ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -394,6 +525,70 @@ fn test_serve_kill_stale_pid_file() {
 
     // PID file should have been cleaned up
     assert!(!pid_file.exists(), "stale PID file should be removed");
+}
+
+// ─── edit --append ────────────────────────────────────────────────────────────
+
+#[test]
+fn test_edit_append_via_stdin() {
+    let dir = init_vault();
+
+    // Create a note with a known body
+    let note_path = dir.path().join("notes/append-target.md");
+    fs::write(
+        &note_path,
+        "---\ntitle: Append Target\nmodified: 2020-01-01T00:00:00\n---\n\n# Append Target\n\nOriginal body.\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "append-target"])
+        .write_stdin("appended line\n")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&note_path).unwrap();
+    assert!(content.contains("Original body."), "original body must be preserved");
+    assert!(content.contains("appended line"), "new text must be appended");
+    // modified timestamp should be updated (not still 2020-01-01)
+    assert!(!content.contains("2020-01-01T00:00:00"), "modified should be updated");
+}
+
+#[test]
+fn test_edit_append_without_stdin_fails() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/no-stdin-note.md");
+    fs::write(&note_path, "---\ntitle: No Stdin\n---\n\n# No Stdin\n").unwrap();
+
+    // No write_stdin → stdin is not piped → should fail with clear error
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "no-stdin-note"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--append requires piped stdin"));
+}
+
+#[test]
+fn test_edit_append_ambiguous_query_fails() {
+    let dir = init_vault();
+
+    // Two notes that share a common prefix so "log" matches both
+    let note1 = dir.path().join("notes/log-alpha.md");
+    fs::write(&note1, "---\ntitle: Log Alpha\n---\n\n# Log Alpha\n").unwrap();
+
+    let note2 = dir.path().join("notes/log-beta.md");
+    fs::write(&note2, "---\ntitle: Log Beta\n---\n\n# Log Beta\n").unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "log"])
+        .write_stdin("some content\n")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Ambiguous"));
 }
 
 // ─── rename ──────────────────────────────────────────────────────────────────

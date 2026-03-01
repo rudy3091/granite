@@ -40,12 +40,30 @@ enum Commands {
         /// Subdirectory under notes/
         #[arg(long)]
         dir: Option<String>,
+
+        /// Set note body directly (skips template)
+        #[arg(long)]
+        content: Option<String>,
     },
 
     /// Open a note in $EDITOR
     Edit {
         /// Fuzzy search query
         query: String,
+
+        /// Append piped stdin to the note (skips editor)
+        #[arg(long)]
+        append: bool,
+    },
+
+    /// Print a note's content to stdout
+    View {
+        /// Fuzzy search query
+        query: String,
+
+        /// Strip frontmatter, print only the body
+        #[arg(long)]
+        no_frontmatter: bool,
     },
 
     /// List all notes
@@ -195,22 +213,54 @@ fn main() -> Result<()> {
             no_edit,
             template,
             dir,
+            content,
         } => {
             let vault_path = vault::resolve_vault()?;
+            // Read from stdin when piped; stdin content implies no-edit
+            let (resolved_content, resolved_no_edit) = if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                (Some(content.unwrap_or(buf)), true)
+            } else {
+                (content, no_edit)
+            };
             commands::new::run(
                 &vault_path,
                 commands::new::NewOptions {
                     title,
-                    no_edit,
+                    no_edit: resolved_no_edit,
                     template,
                     dir,
+                    content: resolved_content,
                 },
             )?;
         }
 
-        Commands::Edit { query } => {
+        Commands::Edit { query, append } => {
             let vault_path = vault::resolve_vault()?;
-            commands::edit::run(&vault_path, &query)?;
+            let stdin_content = if append && !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                if buf.is_empty() { None } else { Some(buf) }
+            } else {
+                None
+            };
+            commands::edit::run(
+                &vault_path,
+                &query,
+                commands::edit::EditOptions { append },
+                stdin_content,
+            )?;
+        }
+
+        Commands::View {
+            query,
+            no_frontmatter,
+        } => {
+            let vault_path = vault::resolve_vault()?;
+            commands::view::run(&vault_path, &query, commands::view::ViewOptions { no_frontmatter })?;
         }
 
         Commands::List { tag, sort, tree } => {

@@ -247,6 +247,17 @@ Create a new note.
 - `--no-edit` — create without opening editor
 - `--template <name>` — use a specific template
 - `--dir <subdir>` — create in `notes/<subdir>/`
+- `--content <text>` — set the note body directly (skips template)
+
+**Stdin support:** If stdin is not a terminal (i.e. data is piped), the piped content is used as the note body. This implies `--no-edit`.
+
+```sh
+# Pipe file contents as the note body
+cat some_file | granite new --dir logs xxx_log
+
+# Inline via flag
+granite new --dir logs --content "$(cat some_file)" xxx_log
+```
 
 #### `granite edit <query>`
 
@@ -255,6 +266,17 @@ Open an existing note in `$EDITOR`.
 - `query` is fuzzy-matched against note titles and filenames
 - If multiple matches, presents an interactive picker (using nucleo)
 - Updates `modified` timestamp in frontmatter on save
+
+#### `granite view <query>`
+
+Print a note's content to stdout.
+
+- `query` is fuzzy-matched against note titles and filenames (same as `granite edit`)
+- If multiple matches, presents an interactive picker
+- Outputs the raw file content (including frontmatter) to stdout
+
+**Flags:**
+- `--no-frontmatter` — strip frontmatter, print only the body
 
 #### `granite list`
 
@@ -416,6 +438,7 @@ Core CLI commands and the indexing engine.
 - [ ] `granite init` — vault scaffolding
 - [ ] `granite new` — note creation with template and auto-frontmatter
 - [ ] `granite edit` — fuzzy picker → `$EDITOR`
+- [ ] `granite view` — print note content to stdout
 - [ ] `granite list` — note listing with tag filter, sort, tree view
 - [ ] `granite search` — regex-based full-text search
 - [ ] `granite links` — forward links, backlinks, orphan detection
