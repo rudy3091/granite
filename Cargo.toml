@@ -15,6 +15,8 @@ regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2"
 anyhow = "1"
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 assert_cmd = "2.1"
