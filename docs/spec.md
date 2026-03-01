@@ -16,7 +16,7 @@ Granite is a local-first markdown management tool inspired by Obsidian, built fo
 
 - WYSIWYG or rich-text editing
 - Real-time collaboration
-- Cloud-hosted service
+- Cloud-hosted service (sync via git remotes such as GitHub is supported and encouraged)
 - Plugin/extension system
 
 ## 2. Core Concepts
@@ -61,10 +61,34 @@ Granite ships as a single statically-linked Rust binary (`granite`). No runtime 
 |---|---|---|
 | CLI parsing | `clap` (derive) | Subcommand-based interface |
 | Fuzzy matching | `nucleo` | From helix-editor, fast fuzzy search |
-| Markdown parsing | `pulldown-cmark` | CommonMark parser, link extraction and HTML rendering |
+| Markdown parsing | `pulldown-cmark` | GFM support (tables, strikethrough, task lists, autolinks), link extraction, HTML rendering |
 | Frontmatter | `serde` + `serde_yaml` | YAML frontmatter parsing for index and metadata |
 | Web server | `axum` | Local web viewer with file browsing |
 | TUI framework | `ratatui` + `crossterm` | Deferred: interactive terminal UI |
+
+### Context Resolution
+
+Granite commands work from **any directory**. The "current context" determines which vault a command operates on. Granite resolves the active vault by checking these locations in order (later overrides earlier):
+
+1. **`~/.config/granite/config.toml`** — global config; stores `default_vault` path and a list of registered vaults
+2. **`~/.granite/config.toml`** — alternative global config location (same format)
+3. **`$(pwd)/.granite/`** — if present, the current directory is itself a vault and takes highest priority
+
+For example, if the user runs `granite new "my idea"` from `/Users/user/x/y/z` and the global config's `default_vault` points to `/Users/user/vaults/work`, the note is created under `/Users/user/vaults/work/notes/my-idea.md`. But if `/Users/user/x/y/z/.granite/` exists, that local vault is used instead.
+
+**Global config format:**
+
+```toml
+default_vault = "/Users/user/vaults/work"
+
+[[vaults]]
+path = "/Users/user/vaults/work"
+name = "work"
+
+[[vaults]]
+path = "/Users/user/vaults/personal"
+name = "personal"
+```
 
 ### In-Memory Index
 
@@ -73,15 +97,18 @@ On startup, granite scans the vault and builds an in-memory index. The index is 
 **Indexed data per note:**
 
 - File path and last-modified timestamp
-- Frontmatter fields: `title`, `tags`, `aliases`, `created`, `modified`
+- All frontmatter fields as arbitrary key-value pairs (schemaless — no fixed schema)
 - Forward links (all `[[wiki-links]]` found in body)
 - Inline tags (all `#tag` occurrences in body)
 
 **Derived data (computed from the above):**
 
 - Backlinks: inverse mapping of forward links
-- Tag index: tag → list of notes
+- Tag index: tag → list of notes (from frontmatter `tags` + inline `#tags`)
 - Title/alias lookup table: for fast link resolution and fuzzy search
+- Frontmatter field index: any frontmatter key can be used to filter and sort notes
+
+> **Future:** A query DSL will allow filtering and sorting notes by arbitrary frontmatter fields (e.g. `status:draft`, `priority:>3`).
 
 The index is built by scanning all `.md` files under `notes/`. For CLI one-shot commands, the index is built, queried, and discarded. For the web viewer, the index stays resident and can refresh on file changes.
 
@@ -93,14 +120,18 @@ To keep CLI commands fast, granite maintains an index cache at `.granite/index.j
 
 ### Note File
 
+Frontmatter is optional and has no mandatory format. Notes can have any YAML frontmatter fields, or none at all. The following are equivalent valid notes:
+
+**With frontmatter (any fields the user chooses):**
+
 ```markdown
 ---
 title: My Note Title
-description: A note about Rust programming patterns
 tags:
   - rust
   - programming
-created: 2026-03-01T12:00:00Z
+status: draft
+priority: 1
 ---
 
 # My Note Title
@@ -110,22 +141,35 @@ This is the note body. Link to [[another-note]] or [[folder/deep-note|a deep not
 Use #inline-tags anywhere in the body.
 ```
 
+**Without frontmatter (also valid):**
+
+```markdown
+# My Note Title
+
+A note with no frontmatter. Granite infers the title from the filename
+and timestamps from the filesystem.
+```
+
 ### Frontmatter Fields
 
-Frontmatter is central to granite's seamless experience. It drives the index, powers search ranking, and enables instant filtering without reading file bodies.
+Frontmatter is **schemaless**. Any valid YAML key-value pairs are accepted, indexed, and queryable. Users can define their own fields freely (e.g. `status`, `priority`, `project`, `due`) — granite indexes them all without configuration.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `title` | string | no | Display title. Defaults to filename if omitted. Used in search, link resolution, and listing. |
-| `tags` | list[string] | no | Primary categorization. Merged with inline `#tags` in the index. |
-| `created` | datetime | no | Auto-set on `granite new`. Used for sorting and filtering. |
-| `modified` | datetime | no | Auto-updated on `granite edit`. Powers "recently modified" views. |
-| `aliases` | list[string] | no | Alternative names for link resolution. A note can be linked by any alias. |
-| `description` | string | no | Short summary. Shown in search results and web viewer listings. |
+A note without frontmatter is equally valid. Granite infers `title` from the filename and `created`/`modified` from filesystem timestamps when frontmatter is absent.
 
-All frontmatter fields are optional. A note without frontmatter is valid — granite infers `title` from the filename and `created`/`modified` from filesystem timestamps.
+**Well-known fields:** The following fields are conventions that granite gives special behavior to. They are not required.
 
-**Auto-management:** When `granite new` or `granite edit` is used, granite automatically populates or updates `created` and `modified` fields. Users never need to manage timestamps manually.
+| Field | Type | Behavior |
+|---|---|---|
+| `title` | string | Used for link resolution, search ranking, and display. Defaults to filename. |
+| `tags` | list[string] | Merged with inline `#tags` in the tag index. |
+| `created` | datetime | Auto-set by `granite new`. Used for sorting. |
+| `modified` | datetime | Auto-updated by `granite edit`. Powers "recently modified" views. |
+| `aliases` | list[string] | Alternative names for wiki-link resolution. |
+| `description` | string | Shown in search results and web viewer listings. |
+
+**Auto-management:** `granite new` and `granite edit` automatically populate `created` and `modified`. Users never need to manage timestamps manually.
+
+> **Future:** A DSL will allow querying and filtering notes by arbitrary frontmatter fields (e.g. `granite list --where "status = draft AND priority > 3"`).
 
 ### Link Resolution Order
 
@@ -276,6 +320,16 @@ Git sync operations.
 
 Rename a note and update all wiki-links across the vault that reference it.
 
+#### `granite context`
+
+Manage which vault granite operates on. Allows granite commands to work from any directory.
+
+- `granite context` — show the currently active vault (resolved via context resolution priority)
+- `granite context set <path>` — set the default vault in global config
+- `granite context list` — list all registered vaults
+- `granite context add <path>` — register a vault in global config
+- `granite context remove <path>` — unregister a vault from global config
+
 ## 7. Web Viewer
 
 ```
@@ -326,7 +380,7 @@ Individual note pages show:
 ### Implementation
 
 - **Server:** `axum` with `tower-http` for static assets
-- **Rendering:** `pulldown-cmark` for markdown → HTML conversion
+- **Rendering:** `pulldown-cmark` for GitHub Flavored Markdown → HTML conversion (tables, strikethrough, task lists, autolinks)
 - **Templates:** Simple HTML templates (handlebars or inline), no SPA
 - **Styling:** Single CSS file, responsive, minimal
 - **Index:** Reuses the same in-memory index as CLI commands; stays resident while server runs
@@ -369,6 +423,8 @@ Core CLI commands and the indexing engine.
 - [ ] `granite daily` — daily note creation/opening
 - [ ] `granite sync` — git add/commit/pull/push via system git
 - [ ] `granite rename` — rename with vault-wide link updating
+- [ ] `granite context` — vault context management (set/list/add/remove)
+- [ ] Context resolution (`~/.config/granite` → `~/.granite` → `$(pwd)/.granite`)
 - [ ] In-memory index with JSON cache for fast repeated invocations
 - [ ] Wiki-link parsing and resolution (filename → title → alias)
 - [ ] YAML frontmatter auto-management (`created`, `modified`)
