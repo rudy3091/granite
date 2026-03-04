@@ -45,9 +45,6 @@ pub fn run(vault_path: &Path, opts: ListOptions) -> Result<()> {
     }
 
     // --dir-only conflicts
-    if opts.dir_only && opts.paths {
-        bail!("--dir-only and --paths are mutually exclusive");
-    }
     if opts.dir_only && matches!(opts.format, OutputFormat::Json) {
         bail!("--dir-only and --format json are mutually exclusive");
     }
@@ -160,13 +157,21 @@ pub fn run(vault_path: &Path, opts: ListOptions) -> Result<()> {
             return Ok(());
         }
 
-        if opts.tree {
+        if opts.paths {
+            let notes_dir = vault_path.join("notes");
+            let base = if base_dir.is_empty() {
+                notes_dir.clone()
+            } else {
+                notes_dir.join(base_dir)
+            };
+            subdirs.iter().for_each(|d| println!("{}", base.join(d).display()));
+        } else if opts.tree {
             print_dir_tree(&subdirs);
         } else {
             subdirs.iter().for_each(|d| println!("  {}/", d));
         }
 
-        if !opts.no_summary {
+        if !opts.paths && !opts.no_summary {
             println!("\n{} directory(s)", subdirs.len());
         }
         return Ok(());

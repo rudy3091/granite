@@ -1336,15 +1336,43 @@ fn test_list_dir_only_with_limit() {
 }
 
 #[test]
-fn test_list_dir_only_conflict_with_paths() {
+fn test_list_dir_only_with_paths_prints_absolute_paths() {
     let dir = init_vault();
 
     granite()
         .current_dir(dir.path())
+        .args(["new", "Proj Note", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
         .args(["list", "--dir-only", "--paths"])
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("mutually exclusive"));
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert!(!lines.is_empty(), "should output at least one line");
+    for line in &lines {
+        assert!(
+            std::path::Path::new(line).is_absolute(),
+            "each line should be an absolute path, got: {}",
+            line
+        );
+        assert!(
+            !line.ends_with('/'),
+            "paths should not have trailing slash, got: {}",
+            line
+        );
+    }
+    assert!(
+        lines.iter().any(|l| l.contains("projects")),
+        "projects dir should appear in output"
+    );
 }
 
 #[test]
