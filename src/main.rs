@@ -99,6 +99,18 @@ enum Commands {
         /// Limit output to at most N notes (applied after sort)
         #[arg(long, value_name = "N")]
         limit: Option<usize>,
+
+        /// Limit output to notes under notes/<subdir>/ (fuzzy-matched)
+        #[arg(long)]
+        dir: Option<String>,
+
+        /// List subdirectories instead of notes (one per line); combine with --dir to explore subtrees
+        #[arg(long)]
+        dir_only: bool,
+
+        /// Maximum traversal depth relative to --dir base (0 = immediate children only)
+        #[arg(long, value_name = "N")]
+        depth: Option<usize>,
     },
 
     /// Full-text search across notes
@@ -284,7 +296,7 @@ fn main() -> Result<()> {
             commands::view::run(&vault_path, &query, commands::view::ViewOptions { no_frontmatter, dir })?;
         }
 
-        Commands::List { tag, sort, tree, paths, format, no_summary, limit } => {
+        Commands::List { tag, sort, tree, paths, format, no_summary, limit, dir, dir_only, depth } => {
             let vault_path = vault::resolve_vault()?;
             let output_format = match format.as_deref() {
                 Some("json") => commands::list::OutputFormat::Json,
@@ -293,7 +305,10 @@ fn main() -> Result<()> {
             };
             commands::list::run(
                 &vault_path,
-                commands::list::ListOptions { tag, sort, tree, paths, format: output_format, no_summary, limit },
+                commands::list::ListOptions {
+                    tag, sort, tree, paths, format: output_format, no_summary, limit,
+                    dir, dir_only, depth,
+                },
             )?;
         }
 

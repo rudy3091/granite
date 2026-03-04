@@ -291,6 +291,24 @@ List all notes in the vault.
 - `--no-summary` — suppress the trailing `N note(s)` count line; useful when piping to `wc -l` or `grep`
 - `--format <fmt>` — output format: `plain` (default) or `json` (JSON array with `path`, `rel_path`, `title`, `tags`, `modified` fields per note)
 - `--limit <N>` — output at most N notes after sorting; useful in `$()` contexts (e.g. `latest=$(granite list --paths --limit 1)`)
+- `--dir <subdir>` — limit output to notes under `notes/<subdir>/`; the `<subdir>` value is itself fuzzy-matched against available directories, and if multiple directories match an interactive picker is shown first
+- `--dir-only` — output subdirectory names (one per line) instead of notes; combine with `--dir` to explore subtrees; enables gradual vault navigation
+- `--depth <N>` — limit traversal depth relative to vault root or `--dir` base (0 = immediate children only, 1 = one level down, etc.)
+
+**Flag conflicts:** `--dir-only` is mutually exclusive with `--paths`, `--format json`, and `--tag`. `--sort created` and `--sort modified` are not valid with `--dir-only` (directories have no timestamps).
+
+**Gradual exploration workflow:**
+```sh
+# Step 1: see top-level directory structure
+granite list --dir-only
+
+# Step 2: drill into a subtree
+granite list --dir-only --dir projects
+
+# Step 3: list notes inside
+granite list --dir projects/2026
+granite list --dir projects --depth 1   # only direct children of projects/
+```
 
 **Unix composability examples:**
 ```sh
@@ -308,6 +326,12 @@ granite list --format json | jq '.[] | .title'
 
 # Open all todo-tagged notes
 vim $(granite list --tag todo --paths)
+
+# Scope a listing to immediate children only
+granite list --dir projects --depth 1 --paths
+
+# Count notes directly in inbox
+granite list --dir inbox --depth 0 --no-summary --paths | wc -l
 ```
 
 #### `granite search <pattern>`
