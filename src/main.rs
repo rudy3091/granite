@@ -64,6 +64,10 @@ enum Commands {
         /// Strip frontmatter, print only the body
         #[arg(long)]
         no_frontmatter: bool,
+
+        /// Limit search to notes under notes/<subdir>/ (fuzzy-matched against available dirs)
+        #[arg(long)]
+        dir: Option<String>,
     },
 
     /// List all notes
@@ -258,9 +262,10 @@ fn main() -> Result<()> {
         Commands::View {
             query,
             no_frontmatter,
+            dir,
         } => {
             let vault_path = vault::resolve_vault()?;
-            commands::view::run(&vault_path, &query, commands::view::ViewOptions { no_frontmatter })?;
+            commands::view::run(&vault_path, &query, commands::view::ViewOptions { no_frontmatter, dir })?;
         }
 
         Commands::List { tag, sort, tree } => {

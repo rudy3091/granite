@@ -264,6 +264,26 @@ impl Index {
         Ok(())
     }
 
+    /// Return all unique subdirectories under notes/ (relative to notes/).
+    /// E.g. a note at "notes/inbox/foo.md" contributes "inbox".
+    /// Notes directly under notes/ contribute nothing (root level).
+    pub fn directories(&self) -> Vec<String> {
+        let mut dirs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for path in self.notes.keys() {
+            if let Some(parent) = Path::new(path).parent() {
+                let rel = parent.strip_prefix("notes").unwrap_or(parent);
+                let s = rel
+                    .to_string_lossy()
+                    .trim_start_matches('/')
+                    .to_string();
+                if !s.is_empty() {
+                    dirs.insert(s);
+                }
+            }
+        }
+        dirs.into_iter().collect()
+    }
+
     /// Find orphan notes (no incoming or outgoing links)
     pub fn orphans(&self) -> Vec<String> {
         let bl = self.backlinks();
@@ -301,5 +321,55 @@ mod tests {
         assert!(fuzzy_match("mn", "my-note"));
         assert!(fuzzy_match("note", "my-note"));
         assert!(!fuzzy_match("xyz", "my-note"));
+    }
+
+    fn make_index(paths: &[&str]) -> Index {
+        let notes = paths
+            .iter()
+            .map(|&p| {
+                (
+                    p.to_string(),
+                    NoteEntry {
+                        rel_path: p.to_string(),
+                        modified_ts: 0,
+                        frontmatter: HashMap::new(),
+                        forward_links: vec![],
+                        inline_tags: vec![],
+                    },
+                )
+            })
+            .collect();
+        Index { notes }
+    }
+
+    #[test]
+    fn test_directories_collects_unique_subdirs() {
+        let index = make_index(&[
+            "notes/inbox/foo.md",
+            "notes/inbox/bar.md",
+            "notes/daily/2026-01-01.md",
+            "notes/top-level.md",
+        ]);
+        let mut dirs = index.directories();
+        dirs.sort();
+        assert_eq!(dirs, vec!["daily", "inbox"]);
+    }
+
+    #[test]
+    fn test_directories_nested() {
+        let index = make_index(&[
+            "notes/projects/2026/my-note.md",
+            "notes/projects/2026/other.md",
+            "notes/inbox/task.md",
+        ]);
+        let mut dirs = index.directories();
+        dirs.sort();
+        assert_eq!(dirs, vec!["inbox", "projects/2026"]);
+    }
+
+    #[test]
+    fn test_directories_empty_when_all_root() {
+        let index = make_index(&["notes/foo.md", "notes/bar.md"]);
+        assert!(index.directories().is_empty());
     }
 }
