@@ -2,12 +2,21 @@ use anyhow::Result;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::index::Index;
+use crate::index::{Index, NoteEntry};
+
+pub enum OutputFormat {
+    Plain,
+    Json,
+}
 
 pub struct ListOptions {
     pub tag: Option<String>,
     pub sort: String,
     pub tree: bool,
+    pub paths: bool,
+    pub format: OutputFormat,
+    pub no_summary: bool,
+    pub limit: Option<usize>,
 }
 
 pub fn run(vault_path: &Path, opts: ListOptions) -> Result<()> {
@@ -34,32 +43,78 @@ pub fn run(vault_path: &Path, opts: ListOptions) -> Result<()> {
         }
     }
 
+    // Apply limit after sort
+    if let Some(n) = opts.limit {
+        entries.truncate(n);
+    }
+
     if entries.is_empty() {
-        println!("No notes found.");
+        match opts.format {
+            OutputFormat::Json => println!("[]"),
+            OutputFormat::Plain if opts.paths => {}
+            OutputFormat::Plain => println!("No notes found."),
+        }
         return Ok(());
     }
 
-    if opts.tree {
-        print_tree(&entries);
-    } else {
-        for (path, entry) in &entries {
-            let tags = entry.all_tags();
-            let tag_str = if tags.is_empty() {
-                String::new()
-            } else {
-                format!(" [{}]", tags.join(", "))
-            };
-            println!("  {} ({}){}", entry.title(), path, tag_str);
+    match opts.format {
+        OutputFormat::Json => print_json(vault_path, &entries)?,
+        OutputFormat::Plain if opts.paths => print_paths(vault_path, &entries),
+        OutputFormat::Plain if opts.tree => {
+            print_tree(&entries);
+            if !opts.no_summary {
+                println!("\n{} note(s)", entries.len());
+            }
+        }
+        OutputFormat::Plain => {
+            print_plain(&entries);
+            if !opts.no_summary {
+                println!("\n{} note(s)", entries.len());
+            }
         }
     }
 
-    println!("\n{} note(s)", entries.len());
     Ok(())
 }
 
-fn print_tree(entries: &[(&String, &crate::index::NoteEntry)]) {
+fn print_paths(vault_path: &Path, entries: &[(&String, &NoteEntry)]) {
+    entries.iter().for_each(|(rel, _)| {
+        println!("{}", vault_path.join(rel.as_str()).display());
+    });
+}
+
+fn print_plain(entries: &[(&String, &NoteEntry)]) {
+    entries.iter().for_each(|(path, entry)| {
+        let tags = entry.all_tags();
+        let tag_str = if tags.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", tags.join(", "))
+        };
+        println!("  {} ({}){}", entry.title(), path, tag_str);
+    });
+}
+
+fn print_json(vault_path: &Path, entries: &[(&String, &NoteEntry)]) -> Result<()> {
+    let items: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(rel, entry)| {
+            serde_json::json!({
+                "path": vault_path.join(rel.as_str()).to_string_lossy(),
+                "rel_path": rel,
+                "title": entry.title(),
+                "tags": entry.all_tags(),
+                "modified": entry.modified_ts,
+            })
+        })
+        .collect();
+    println!("{}", serde_json::to_string_pretty(&items)?);
+    Ok(())
+}
+
+fn print_tree(entries: &[(&String, &NoteEntry)]) {
     // Group by directory
-    let mut tree: BTreeMap<String, Vec<(&String, &crate::index::NoteEntry)>> = BTreeMap::new();
+    let mut tree: BTreeMap<String, Vec<(&String, &NoteEntry)>> = BTreeMap::new();
 
     for (path, entry) in entries {
         let dir = Path::new(path.as_str())
@@ -74,11 +129,7 @@ fn print_tree(entries: &[(&String, &crate::index::NoteEntry)]) {
         let display_dir = if dir.is_empty() { "." } else { dir };
         println!("{}/", display_dir);
         for (i, (_path, entry)) in notes.iter().enumerate() {
-            let connector = if i == notes.len() - 1 {
-                "└──"
-            } else {
-                "├──"
-            };
+            let connector = if i == notes.len() - 1 { "└──" } else { "├──" };
             println!("  {} {}", connector, entry.title());
         }
     }

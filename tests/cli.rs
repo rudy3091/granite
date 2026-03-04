@@ -644,3 +644,290 @@ fn test_rename_updates_wikilinks() {
     assert!(updated.contains("[[renamed]]"), "wikilinks should be updated");
     assert!(!updated.contains("[[original]]"), "old wikilinks should be gone");
 }
+
+// ─── list --paths ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_list_paths_prints_absolute_paths() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Path Note", "--no-edit"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    // Each non-empty line must be an absolute path ending in .md
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(!lines.is_empty(), "should have at least one path");
+    for line in &lines {
+        assert!(line.ends_with(".md"), "each line should end with .md, got: {}", line);
+        assert!(std::path::Path::new(line).is_absolute(), "path should be absolute: {}", line);
+    }
+    // No summary line
+    assert!(!stdout.contains("note(s)"), "summary line should not appear with --paths");
+}
+
+#[test]
+fn test_list_paths_empty_vault_produces_no_output() {
+    let dir = init_vault();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.trim().is_empty(), "empty vault --paths should produce no output");
+}
+
+#[test]
+fn test_list_paths_respects_tag_filter() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/rust-note.md"),
+        "---\ntitle: Rust Note\ntags: [rust]\n---\n\n# Rust Note\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("notes/other-note.md"),
+        "---\ntitle: Other Note\n---\n\n# Other Note\n",
+    )
+    .unwrap();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths", "--tag", "rust"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("rust-note.md"), "rust-tagged note path should appear");
+    assert!(!stdout.contains("other-note.md"), "untagged note should not appear");
+}
+
+// ─── list --no-summary ────────────────────────────────────────────────────────
+
+#[test]
+fn test_list_no_summary_suppresses_count_line() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Summary Note", "--no-edit"])
+        .assert()
+        .success();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--no-summary"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("note(s)").not());
+}
+
+#[test]
+fn test_list_default_still_shows_summary() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Backward Compat Note", "--no-edit"])
+        .assert()
+        .success();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("note(s)"));
+}
+
+// ─── list --format json ───────────────────────────────────────────────────────
+
+#[test]
+fn test_list_format_json_is_valid_json_array() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Json Note", "--no-edit"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--format", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("output should be valid JSON");
+    assert!(parsed.is_array(), "output should be a JSON array");
+}
+
+#[test]
+fn test_list_format_json_contains_expected_fields() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/field-note.md"),
+        "---\ntitle: Field Note\ntags: [alpha]\n---\n\n# Field Note\n",
+    )
+    .unwrap();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--format", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    let note = parsed.iter().find(|v| v["title"] == "Field Note").expect("Field Note should be in output");
+    assert!(note.get("path").is_some(), "should have 'path' field");
+    assert!(note.get("rel_path").is_some(), "should have 'rel_path' field");
+    assert!(note.get("title").is_some(), "should have 'title' field");
+    assert!(note.get("tags").is_some(), "should have 'tags' field");
+    assert!(note.get("modified").is_some(), "should have 'modified' field");
+    assert_eq!(note["tags"][0], "alpha");
+}
+
+#[test]
+fn test_list_format_json_empty_vault_returns_empty_array() {
+    let dir = init_vault();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--format", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap().trim().to_string();
+    assert_eq!(stdout, "[]", "empty vault should return empty JSON array");
+}
+
+#[test]
+fn test_list_format_unknown_exits_with_error() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--format", "toml"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown format"));
+}
+
+// ─── list --limit ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_list_limit_returns_at_most_n_notes() {
+    let dir = init_vault();
+
+    for i in 1..=5 {
+        granite()
+            .current_dir(dir.path())
+            .args(["new", &format!("Note {}", i), "--no-edit"])
+            .assert()
+            .success();
+    }
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths", "--limit", "3"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let line_count = stdout.lines().count();
+    assert_eq!(line_count, 3, "should return exactly 3 paths");
+}
+
+#[test]
+fn test_list_limit_respects_sort_order() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/aaa-note.md"),
+        "---\ntitle: AAA Note\n---\n\n# AAA Note\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("notes/zzz-note.md"),
+        "---\ntitle: ZZZ Note\n---\n\n# ZZZ Note\n",
+    )
+    .unwrap();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths", "--sort", "title", "--limit", "1"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("aaa-note.md"), "alphabetically first note should be returned");
+    assert!(!stdout.contains("zzz-note.md"), "second note should not appear");
+}
+
+#[test]
+fn test_list_limit_larger_than_count_is_safe() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Only Note One", "--no-edit"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Only Note Two", "--no-edit"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths", "--limit", "100"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert_eq!(stdout.lines().count(), 2, "should return all 2 notes when limit exceeds count");
+}

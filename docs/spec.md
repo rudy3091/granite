@@ -287,6 +287,28 @@ List all notes in the vault.
 - `--tag <tag>` — filter by tag
 - `--sort <field>` — sort by `title`, `created`, `modified` (default: `modified`)
 - `--tree` — show as directory tree
+- `--paths` — print one absolute path per line, no decorators, no summary; safe for shell word-splitting and `$()` substitution
+- `--no-summary` — suppress the trailing `N note(s)` count line; useful when piping to `wc -l` or `grep`
+- `--format <fmt>` — output format: `plain` (default) or `json` (JSON array with `path`, `rel_path`, `title`, `tags`, `modified` fields per note)
+- `--limit <N>` — output at most N notes after sorting; useful in `$()` contexts (e.g. `latest=$(granite list --paths --limit 1)`)
+
+**Unix composability examples:**
+```sh
+# Pipe to fuzzy finder, open result in editor
+granite list --paths | fzf | xargs $EDITOR
+
+# Get the most recently modified note path
+latest=$(granite list --paths --limit 1)
+
+# Count notes with a tag
+granite list --tag rust --paths | wc -l
+
+# Process metadata with jq
+granite list --format json | jq '.[] | .title'
+
+# Open all todo-tagged notes
+vim $(granite list --tag todo --paths)
+```
 
 #### `granite search <pattern>`
 

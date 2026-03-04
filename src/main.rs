@@ -83,6 +83,22 @@ enum Commands {
         /// Show as directory tree
         #[arg(long)]
         tree: bool,
+
+        /// Print one absolute path per line (pipe-friendly, safe for $())
+        #[arg(long)]
+        paths: bool,
+
+        /// Output format: plain (default) or json
+        #[arg(long, value_name = "FORMAT")]
+        format: Option<String>,
+
+        /// Suppress the trailing note count line
+        #[arg(long)]
+        no_summary: bool,
+
+        /// Limit output to at most N notes (applied after sort)
+        #[arg(long, value_name = "N")]
+        limit: Option<usize>,
     },
 
     /// Full-text search across notes
@@ -268,11 +284,16 @@ fn main() -> Result<()> {
             commands::view::run(&vault_path, &query, commands::view::ViewOptions { no_frontmatter, dir })?;
         }
 
-        Commands::List { tag, sort, tree } => {
+        Commands::List { tag, sort, tree, paths, format, no_summary, limit } => {
             let vault_path = vault::resolve_vault()?;
+            let output_format = match format.as_deref() {
+                Some("json") => commands::list::OutputFormat::Json,
+                Some("plain") | None => commands::list::OutputFormat::Plain,
+                Some(other) => anyhow::bail!("Unknown format '{}'. Use: plain, json", other),
+            };
             commands::list::run(
                 &vault_path,
-                commands::list::ListOptions { tag, sort, tree },
+                commands::list::ListOptions { tag, sort, tree, paths, format: output_format, no_summary, limit },
             )?;
         }
 
