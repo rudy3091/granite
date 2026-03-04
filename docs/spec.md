@@ -277,6 +277,7 @@ Print a note's content to stdout.
 
 **Flags:**
 - `--no-frontmatter` — strip frontmatter, print only the body
+- `--dir <subdir>` — limit search to notes under `notes/<subdir>/`; the `<subdir>` value is itself fuzzy-matched against available directories, and if multiple directories match an interactive picker is shown first
 
 #### `granite list`
 
