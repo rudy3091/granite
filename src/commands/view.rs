@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::frontmatter;
-use crate::index::Index;
+use crate::index::{fuzzy_match, Index};
 
 pub struct ViewOptions {
     pub no_frontmatter: bool,
@@ -25,7 +25,7 @@ pub fn run(vault_path: &Path, query: &str, opts: ViewOptions) -> Result<()> {
                 dl == dir_query_lower
                     || dl.starts_with(&dir_query_lower)
                     || dl.contains(&dir_query_lower)
-                    || fuzzy_match_dir(&dir_query_lower, &dl)
+                    || fuzzy_match(&dir_query_lower, &dl)
             })
             .collect();
 
@@ -105,17 +105,3 @@ pub fn run(vault_path: &Path, query: &str, opts: ViewOptions) -> Result<()> {
     Ok(())
 }
 
-/// Simple fuzzy matching: check if all chars of needle appear in order in haystack
-fn fuzzy_match_dir(needle: &str, haystack: &str) -> bool {
-    let mut hay_chars = haystack.chars();
-    for nc in needle.chars() {
-        loop {
-            match hay_chars.next() {
-                Some(hc) if hc == nc => break,
-                Some(_) => continue,
-                None => return false,
-            }
-        }
-    }
-    true
-}

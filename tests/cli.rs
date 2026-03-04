@@ -988,3 +988,526 @@ fn test_list_paths_and_no_summary_conflict() {
         .failure()
         .stderr(predicate::str::contains("--no-summary has no effect"));
 }
+
+// ─── list --dir ───────────────────────────────────────────────────────────────
+
+#[test]
+fn test_list_dir_filters_to_subdirectory() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Inbox Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Projects Note", "--no-edit"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "inbox"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("Inbox Note"), "inbox note should appear");
+    assert!(!stdout.contains("Projects Note"), "root note should not appear");
+}
+
+#[test]
+fn test_list_dir_includes_nested_subdirectories() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Deep Note", "--no-edit", "--dir", "projects/2026"])
+        .assert()
+        .success();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "projects"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deep Note"));
+}
+
+#[test]
+fn test_list_dir_no_match_returns_error() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "nonexistent_zzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No directories matching"));
+}
+
+#[test]
+fn test_list_dir_fuzzy_matches_directory_name() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Proj Note", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+
+    // "proj" is a prefix of "projects" — should fuzzy-match
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "proj"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Proj Note"));
+}
+
+#[test]
+fn test_list_dir_with_paths_flag() {
+    let dir = init_vault();
+
+    // "inbox a" → kebab-case → inbox-a.md
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "inbox a", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Root Note", "--no-edit"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "inbox", "--paths"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("inbox-a.md"), "inbox note path should appear");
+    assert!(!stdout.contains("root-note.md"), "root note path should not appear");
+    for line in stdout.lines().filter(|l| !l.is_empty()) {
+        assert!(
+            std::path::Path::new(line).is_absolute(),
+            "path should be absolute: {}",
+            line
+        );
+    }
+}
+
+#[test]
+fn test_list_dir_with_format_json() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Json Dir Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Other", "--no-edit"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "inbox", "--format", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(parsed.len(), 1, "only the inbox note should appear");
+    assert_eq!(parsed[0]["title"], "Json Dir Note");
+}
+
+#[test]
+fn test_list_dir_and_tag_filters_compose() {
+    let dir = init_vault();
+
+    // Use inline #rust tag in body so the index picks it up
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Tagged Inbox", "--no-edit", "--dir", "inbox", "--content", "About #rust"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Untagged Inbox", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Tagged Root", "--no-edit", "--content", "About #rust"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "inbox", "--tag", "rust"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("Tagged Inbox"), "tagged inbox note should appear");
+    assert!(!stdout.contains("Untagged Inbox"), "untagged inbox note should not appear");
+    assert!(!stdout.contains("Tagged Root"), "tagged root note should not appear");
+}
+
+#[test]
+fn test_list_dir_empty_result_shows_dir_message() {
+    let dir = init_vault();
+
+    // inbox exists (created by init_vault) but has no notes
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "inbox"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No notes found in directory 'inbox'"));
+}
+
+// ─── list --dir-only ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_list_dir_only_shows_directories() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Proj Note", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("projects"), "projects dir should appear");
+    assert!(!stdout.contains("Proj Note"), "note title should not appear");
+    assert!(!stdout.contains("proj-note"), "note filename should not appear");
+}
+
+#[test]
+fn test_list_dir_only_one_dir_per_line() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "P", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "A", "--no-edit", "--dir", "archive"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--no-summary"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let dir_lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert!(dir_lines.len() >= 2, "at least two dir lines expected");
+    for line in &dir_lines {
+        assert!(
+            !line.contains("projects") || !line.contains("archive"),
+            "dirs should be on separate lines, got: {}",
+            line
+        );
+    }
+}
+
+#[test]
+fn test_list_dir_only_with_dir_shows_subdirs() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note 2026", "--no-edit", "--dir", "projects/2026"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Old", "--no-edit", "--dir", "projects/archive"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--dir", "projects"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("2026"), "2026 subdir should appear");
+    assert!(stdout.contains("archive"), "archive subdir should appear");
+    assert!(!stdout.contains("Note 2026"), "note titles should not appear");
+}
+
+#[test]
+fn test_list_dir_only_no_subdirectories() {
+    let dir = init_vault();
+
+    // inbox (created by init_vault) has no subdirectories
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--dir", "inbox"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No subdirectories found"));
+}
+
+#[test]
+fn test_list_dir_only_with_no_summary() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "P", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--no-summary"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("director").not());
+}
+
+#[test]
+fn test_list_dir_only_with_limit() {
+    let dir = init_vault();
+
+    for name in &["aaa", "bbb", "ccc"] {
+        granite()
+            .current_dir(dir.path())
+            .args(["new", &format!("Note {}", name), "--no-edit", "--dir", name])
+            .assert()
+            .success();
+    }
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--limit", "2", "--no-summary"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(lines.len(), 2, "limit should restrict to 2 dirs, got: {:?}", lines);
+}
+
+#[test]
+fn test_list_dir_only_conflict_with_paths() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--paths"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+#[test]
+fn test_list_dir_only_conflict_with_format_json() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--format", "json"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+#[test]
+fn test_list_dir_only_conflict_with_tag() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--tag", "rust"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+#[test]
+fn test_list_dir_only_with_sort_is_ignored() {
+    // --sort has no effect on --dir-only (dirs are always listed alphabetically);
+    // the flag is accepted without error rather than conflicting.
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "P", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--sort", "created"])
+        .assert()
+        .success();
+}
+
+// ─── list --depth ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_list_depth_zero_shows_only_root_notes() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Root Note", "--no-edit"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Inbox Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--depth", "0"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("Root Note"), "root note should appear at depth 0");
+    assert!(!stdout.contains("Inbox Note"), "inbox note should not appear at depth 0");
+}
+
+#[test]
+fn test_list_depth_one_includes_one_level_subdirs() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Root Note", "--no-edit"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Inbox Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Deep Note", "--no-edit", "--dir", "inbox/deep"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--depth", "1"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("Root Note"), "root note should appear");
+    assert!(stdout.contains("Inbox Note"), "depth-1 note should appear");
+    assert!(!stdout.contains("Deep Note"), "depth-2 note should not appear at --depth 1");
+}
+
+#[test]
+fn test_list_depth_with_dir_is_relative() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Projects Top", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Projects Nested", "--no-edit", "--dir", "projects/2026"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir", "projects", "--depth", "0"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("Projects Top"), "direct child note should appear");
+    assert!(
+        !stdout.contains("Projects Nested"),
+        "nested note should not appear at depth 0 relative to dir"
+    );
+}
+
+#[test]
+fn test_list_depth_with_dir_only() {
+    let dir = init_vault();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Q1 Note", "--no-edit", "--dir", "projects/2026/q1"])
+        .assert()
+        .success();
+
+    let output = granite()
+        .current_dir(dir.path())
+        .args(["list", "--dir-only", "--depth", "1"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.contains("projects"), "top-level projects dir should appear");
+    assert!(!stdout.contains("q1"), "depth-3 dir should not appear at --depth 1");
+}

@@ -284,6 +284,31 @@ impl Index {
         dirs.into_iter().collect()
     }
 
+    /// Return all subdirectories that physically exist under notes/, regardless of whether
+    /// they contain any indexed notes. Useful for --dir resolution when directories may be empty.
+    pub fn filesystem_directories(vault_path: &Path) -> Vec<String> {
+        let notes_dir = vault_path.join("notes");
+        let mut dirs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if !notes_dir.exists() {
+            return vec![];
+        }
+        for entry in WalkDir::new(&notes_dir)
+            .min_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_dir() {
+                if let Ok(rel) = entry.path().strip_prefix(&notes_dir) {
+                    let s = rel.to_string_lossy().to_string();
+                    if !s.is_empty() {
+                        dirs.insert(s);
+                    }
+                }
+            }
+        }
+        dirs.into_iter().collect()
+    }
+
     /// Find orphan notes (no incoming or outgoing links)
     pub fn orphans(&self) -> Vec<String> {
         let bl = self.backlinks();
@@ -298,7 +323,7 @@ impl Index {
 }
 
 /// Simple fuzzy matching: check if all chars of needle appear in order in haystack
-fn fuzzy_match(needle: &str, haystack: &str) -> bool {
+pub fn fuzzy_match(needle: &str, haystack: &str) -> bool {
     let mut hay_chars = haystack.chars();
     for nc in needle.chars() {
         loop {
