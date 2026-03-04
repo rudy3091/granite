@@ -931,3 +931,60 @@ fn test_list_limit_larger_than_count_is_safe() {
     let stdout = String::from_utf8(output).unwrap();
     assert_eq!(stdout.lines().count(), 2, "should return all 2 notes when limit exceeds count");
 }
+
+// ─── list flag conflicts ──────────────────────────────────────────────────────
+
+#[test]
+fn test_list_paths_and_tree_conflict() {
+    let dir = init_vault();
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths", "--tree"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+#[test]
+fn test_list_format_json_and_paths_conflict() {
+    let dir = init_vault();
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--format", "json", "--paths"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+#[test]
+fn test_list_format_json_and_tree_conflict() {
+    let dir = init_vault();
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--format", "json", "--tree"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+#[test]
+fn test_list_format_json_and_no_summary_conflict() {
+    let dir = init_vault();
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--format", "json", "--no-summary"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--no-summary has no effect"));
+}
+
+#[test]
+fn test_list_paths_and_no_summary_conflict() {
+    let dir = init_vault();
+    granite()
+        .current_dir(dir.path())
+        .args(["list", "--paths", "--no-summary"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--no-summary has no effect"));
+}

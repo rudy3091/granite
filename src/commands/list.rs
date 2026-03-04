@@ -20,6 +20,26 @@ pub struct ListOptions {
 }
 
 pub fn run(vault_path: &Path, opts: ListOptions) -> Result<()> {
+    // Reject flag combinations where one flag would be silently ignored
+    match opts.format {
+        OutputFormat::Json if opts.paths => {
+            anyhow::bail!("--paths and --format json are mutually exclusive");
+        }
+        OutputFormat::Json if opts.tree => {
+            anyhow::bail!("--tree and --format json are mutually exclusive");
+        }
+        OutputFormat::Json if opts.no_summary => {
+            anyhow::bail!("--no-summary has no effect with --format json");
+        }
+        OutputFormat::Plain if opts.paths && opts.tree => {
+            anyhow::bail!("--paths and --tree are mutually exclusive");
+        }
+        OutputFormat::Plain if opts.paths && opts.no_summary => {
+            anyhow::bail!("--no-summary has no effect with --paths");
+        }
+        _ => {}
+    }
+
     let index = Index::build(vault_path)?;
 
     let mut entries: Vec<_> = index.notes.iter().collect();
