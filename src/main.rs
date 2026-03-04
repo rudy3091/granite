@@ -137,6 +137,17 @@ enum Commands {
         new: String,
     },
 
+    /// Add a wiki-link from one note to another
+    Link {
+        /// Fuzzy query for the note that will receive the link (source)
+        target: String,
+        /// Fuzzy query for the note being linked to (destination, must be unambiguous)
+        destination: String,
+        /// Optional context text prepended before the link
+        #[arg(long)]
+        content: Option<String>,
+    },
+
     /// Manage vault context
     Context {
         #[command(subcommand)]
@@ -329,6 +340,20 @@ fn main() -> Result<()> {
         Commands::Rename { old, new } => {
             let vault_path = vault::resolve_vault()?;
             commands::rename::run(&vault_path, &old, &new)?;
+        }
+
+        Commands::Link {
+            target,
+            destination,
+            content,
+        } => {
+            let vault_path = vault::resolve_vault()?;
+            commands::link::run(
+                &vault_path,
+                &target,
+                &destination,
+                commands::link::LinkOptions { content },
+            )?;
         }
 
         Commands::Serve { subcommand, port } => {

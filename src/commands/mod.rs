@@ -2,6 +2,7 @@ pub mod context;
 pub mod daily;
 pub mod edit;
 pub mod init;
+pub mod link;
 pub mod links;
 pub mod list;
 pub mod new;

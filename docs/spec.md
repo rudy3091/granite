@@ -342,6 +342,20 @@ Git sync operations.
 
 Rename a note and update all wiki-links across the vault that reference it.
 
+#### `granite link <target> <destination>`
+
+Add a wiki-link from one note to another directly from the CLI without opening an editor.
+
+- `target`: fuzzy-searched source note that will receive the new link
+- `destination`: fuzzy-searched destination note being linked to; must resolve to exactly one note (error if ambiguous)
+- If `[[destination-stem]]` already exists in the target note, a warning is printed to stderr and no duplicate is inserted (exits 0)
+- Appends `\n[[destination-stem]]` to the target note body
+- Updates the `modified` timestamp in the target note's frontmatter
+- Prints confirmation: `Linked [[dest-stem]] into notes/target.md`
+
+**Flags:**
+- `--content <text>` — prepend context text before the link: appends `\ntext\n[[destination-stem]]`
+
 #### `granite context`
 
 Manage which vault granite operates on. Allows granite commands to work from any directory.
@@ -446,6 +460,7 @@ Core CLI commands and the indexing engine.
 - [ ] `granite daily` — daily note creation/opening
 - [ ] `granite sync` — git add/commit/pull/push via system git
 - [ ] `granite rename` — rename with vault-wide link updating
+- [ ] `granite link` — append a wiki-link from one note to another without opening an editor
 - [ ] `granite context` — vault context management (set/list/add/remove)
 - [ ] Context resolution (`~/.config/granite` → `~/.granite` → `$(pwd)/.granite`)
 - [ ] In-memory index with JSON cache for fast repeated invocations

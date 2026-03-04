@@ -644,3 +644,186 @@ fn test_rename_updates_wikilinks() {
     assert!(updated.contains("[[renamed]]"), "wikilinks should be updated");
     assert!(!updated.contains("[[original]]"), "old wikilinks should be gone");
 }
+
+// ─── link ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_link_appends_wikilink() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/note-a.md"),
+        "---\ntitle: Note A\n---\n\n# Note A\n\nSome content.\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("notes/note-b.md"),
+        "---\ntitle: Note B\n---\n\n# Note B\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["link", "note-a", "note-b"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Linked [[note-b]] into"));
+
+    let content = fs::read_to_string(dir.path().join("notes/note-a.md")).unwrap();
+    assert!(content.contains("[[note-b]]"), "target should contain the wiki-link");
+}
+
+#[test]
+fn test_link_with_content_flag() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/note-a.md"),
+        "---\ntitle: Note A\n---\n\n# Note A\n\nSome content.\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("notes/note-b.md"),
+        "---\ntitle: Note B\n---\n\n# Note B\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["link", "note-a", "note-b", "--content", "See also"])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(dir.path().join("notes/note-a.md")).unwrap();
+    assert!(content.contains("See also"), "content text should be present");
+    assert!(content.contains("[[note-b]]"), "wiki-link should be present");
+    // content text should appear before the link
+    let content_pos = content.find("See also").unwrap();
+    let link_pos = content.find("[[note-b]]").unwrap();
+    assert!(content_pos < link_pos, "content should precede the link");
+}
+
+#[test]
+fn test_link_updates_modified_timestamp() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/note-a.md"),
+        "---\ntitle: Note A\nmodified: 2020-01-01T00:00:00\n---\n\n# Note A\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("notes/note-b.md"),
+        "---\ntitle: Note B\n---\n\n# Note B\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["link", "note-a", "note-b"])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(dir.path().join("notes/note-a.md")).unwrap();
+    assert!(
+        !content.contains("2020-01-01T00:00:00"),
+        "modified timestamp should be updated"
+    );
+}
+
+#[test]
+fn test_link_warns_on_duplicate() {
+    let dir = init_vault();
+
+    // note-a already links to note-b
+    fs::write(
+        dir.path().join("notes/note-a.md"),
+        "---\ntitle: Note A\n---\n\n# Note A\n\nSee [[note-b]] for more.\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("notes/note-b.md"),
+        "---\ntitle: Note B\n---\n\n# Note B\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["link", "note-a", "note-b"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("already linked"));
+
+    // exactly one occurrence of [[note-b]] — no duplicate added
+    let content = fs::read_to_string(dir.path().join("notes/note-a.md")).unwrap();
+    assert_eq!(
+        content.matches("[[note-b]]").count(),
+        1,
+        "should not duplicate the link"
+    );
+}
+
+#[test]
+fn test_link_target_not_found_fails() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/note-b.md"),
+        "---\ntitle: Note B\n---\n\n# Note B\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["link", "nonexistent_zzz", "note-b"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No notes matching"));
+}
+
+#[test]
+fn test_link_destination_not_found_fails() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/note-a.md"),
+        "---\ntitle: Note A\n---\n\n# Note A\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["link", "note-a", "nonexistent_zzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No notes matching"));
+}
+
+#[test]
+fn test_link_ambiguous_destination_fails() {
+    let dir = init_vault();
+
+    fs::write(
+        dir.path().join("notes/note-a.md"),
+        "---\ntitle: Note A\n---\n\n# Note A\n",
+    )
+    .unwrap();
+    // Two notes sharing a common prefix so "log" matches both
+    fs::write(
+        dir.path().join("notes/log-alpha.md"),
+        "---\ntitle: Log Alpha\n---\n\n# Log Alpha\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("notes/log-beta.md"),
+        "---\ntitle: Log Beta\n---\n\n# Log Beta\n",
+    )
+    .unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["link", "note-a", "log"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Ambiguous"));
+}
