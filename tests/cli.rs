@@ -651,16 +651,16 @@ fn test_rename_updates_wikilinks() {
 fn test_link_appends_wikilink() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/note-a.md"),
-        "---\ntitle: Note A\n---\n\n# Note A\n\nSome content.\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/note-b.md"),
-        "---\ntitle: Note B\n---\n\n# Note B\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note A", "--no-edit", "--content", "Some content."])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note B", "--no-edit"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -677,16 +677,16 @@ fn test_link_appends_wikilink() {
 fn test_link_with_content_flag() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/note-a.md"),
-        "---\ntitle: Note A\n---\n\n# Note A\n\nSome content.\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/note-b.md"),
-        "---\ntitle: Note B\n---\n\n# Note B\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note A", "--no-edit"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note B", "--no-edit"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -707,16 +707,17 @@ fn test_link_with_content_flag() {
 fn test_link_updates_modified_timestamp() {
     let dir = init_vault();
 
+    // Write note-a with a known-old timestamp so we can assert it gets updated
     fs::write(
         dir.path().join("notes/note-a.md"),
         "---\ntitle: Note A\nmodified: 2020-01-01T00:00:00\n---\n\n# Note A\n",
     )
     .unwrap();
-    fs::write(
-        dir.path().join("notes/note-b.md"),
-        "---\ntitle: Note B\n---\n\n# Note B\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note B", "--no-edit"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -736,16 +737,16 @@ fn test_link_warns_on_duplicate() {
     let dir = init_vault();
 
     // note-a already links to note-b
-    fs::write(
-        dir.path().join("notes/note-a.md"),
-        "---\ntitle: Note A\n---\n\n# Note A\n\nSee [[note-b]] for more.\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/note-b.md"),
-        "---\ntitle: Note B\n---\n\n# Note B\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note A", "--no-edit", "--content", "See [[note-b]] for more."])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note B", "--no-edit"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -767,11 +768,11 @@ fn test_link_warns_on_duplicate() {
 fn test_link_target_not_found_fails() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/note-b.md"),
-        "---\ntitle: Note B\n---\n\n# Note B\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note B", "--no-edit"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -785,11 +786,11 @@ fn test_link_target_not_found_fails() {
 fn test_link_destination_not_found_fails() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/note-a.md"),
-        "---\ntitle: Note A\n---\n\n# Note A\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note A", "--no-edit"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -803,22 +804,22 @@ fn test_link_destination_not_found_fails() {
 fn test_link_ambiguous_destination_fails() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/note-a.md"),
-        "---\ntitle: Note A\n---\n\n# Note A\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note A", "--no-edit"])
+        .assert()
+        .success();
     // Two notes sharing a common prefix so "log" matches both
-    fs::write(
-        dir.path().join("notes/log-alpha.md"),
-        "---\ntitle: Log Alpha\n---\n\n# Log Alpha\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/log-beta.md"),
-        "---\ntitle: Log Beta\n---\n\n# Log Beta\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Log Alpha", "--no-edit"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Log Beta", "--no-edit"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
