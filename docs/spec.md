@@ -295,7 +295,9 @@ List all notes in the vault.
 - `--dir-only` — output subdirectory names (one per line) instead of notes; combine with `--dir` to explore subtrees; enables gradual vault navigation
 - `--depth <N>` — limit traversal depth relative to vault root or `--dir` base (0 = immediate children only, 1 = one level down, etc.)
 
-**Flag conflicts:** `--dir-only` is mutually exclusive with `--paths`, `--format json`, and `--tag`. `--sort created` and `--sort modified` are not valid with `--dir-only` (directories have no timestamps).
+**Flag conflicts:** `--dir-only` is mutually exclusive with `--format json` and `--tag`. `--sort created` and `--sort modified` are not valid with `--dir-only` (directories have no timestamps).
+
+**`--dir-only` with `--paths`:** When both flags are used together, directories are printed as absolute paths (one per line, no trailing slash), consistent with how `--paths` behaves for notes.
 
 **Gradual exploration workflow:**
 ```sh
