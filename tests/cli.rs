@@ -995,16 +995,16 @@ fn test_list_paths_and_no_summary_conflict() {
 fn test_list_dir_filters_to_subdirectory() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/inbox/inbox-note.md"),
-        "---\ntitle: Inbox Note\n---\n\n# Inbox Note\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/projects-note.md"),
-        "---\ntitle: Projects Note\n---\n\n# Projects Note\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Inbox Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Projects Note", "--no-edit"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1024,12 +1024,11 @@ fn test_list_dir_filters_to_subdirectory() {
 fn test_list_dir_includes_nested_subdirectories() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects/2026")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/2026/deep-note.md"),
-        "---\ntitle: Deep Note\n---\n\n# Deep Note\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Deep Note", "--no-edit", "--dir", "projects/2026"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -1055,12 +1054,11 @@ fn test_list_dir_no_match_returns_error() {
 fn test_list_dir_fuzzy_matches_directory_name() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/proj-note.md"),
-        "---\ntitle: Proj Note\n---\n\n# Proj Note\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Proj Note", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
 
     // "proj" is a prefix of "projects" — should fuzzy-match
     granite()
@@ -1075,16 +1073,17 @@ fn test_list_dir_fuzzy_matches_directory_name() {
 fn test_list_dir_with_paths_flag() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/inbox/inbox-a.md"),
-        "---\ntitle: Inbox A\n---\n\n# Inbox A\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/root-note.md"),
-        "---\ntitle: Root Note\n---\n\n# Root Note\n",
-    )
-    .unwrap();
+    // "inbox a" → kebab-case → inbox-a.md
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "inbox a", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Root Note", "--no-edit"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1111,16 +1110,16 @@ fn test_list_dir_with_paths_flag() {
 fn test_list_dir_with_format_json() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/inbox/json-dir-note.md"),
-        "---\ntitle: Json Dir Note\n---\n\n# Json Dir Note\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/other.md"),
-        "---\ntitle: Other\n---\n\n# Other\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Json Dir Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Other", "--no-edit"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1141,21 +1140,22 @@ fn test_list_dir_with_format_json() {
 fn test_list_dir_and_tag_filters_compose() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/inbox/tagged-inbox.md"),
-        "---\ntitle: Tagged Inbox\ntags: [rust]\n---\n\n# Tagged Inbox\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/inbox/untagged-inbox.md"),
-        "---\ntitle: Untagged Inbox\n---\n\n# Untagged Inbox\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/tagged-root.md"),
-        "---\ntitle: Tagged Root\ntags: [rust]\n---\n\n# Tagged Root\n",
-    )
-    .unwrap();
+    // Use inline #rust tag in body so the index picks it up
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Tagged Inbox", "--no-edit", "--dir", "inbox", "--content", "About #rust"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Untagged Inbox", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Tagged Root", "--no-edit", "--content", "About #rust"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1191,12 +1191,11 @@ fn test_list_dir_empty_result_shows_dir_message() {
 fn test_list_dir_only_shows_directories() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/proj-note.md"),
-        "---\ntitle: Proj Note\n---\n\n# Proj Note\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Proj Note", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1217,18 +1216,16 @@ fn test_list_dir_only_shows_directories() {
 fn test_list_dir_only_one_dir_per_line() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects")).unwrap();
-    fs::create_dir_all(dir.path().join("notes/archive")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/p.md"),
-        "---\ntitle: P\n---\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/archive/a.md"),
-        "---\ntitle: A\n---\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "P", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "A", "--no-edit", "--dir", "archive"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1255,18 +1252,16 @@ fn test_list_dir_only_one_dir_per_line() {
 fn test_list_dir_only_with_dir_shows_subdirs() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects/2026")).unwrap();
-    fs::create_dir_all(dir.path().join("notes/projects/archive")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/2026/note.md"),
-        "---\ntitle: Note 2026\n---\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/projects/archive/old.md"),
-        "---\ntitle: Old\n---\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Note 2026", "--no-edit", "--dir", "projects/2026"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Old", "--no-edit", "--dir", "projects/archive"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1300,12 +1295,11 @@ fn test_list_dir_only_no_subdirectories() {
 fn test_list_dir_only_with_no_summary() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/p.md"),
-        "---\ntitle: P\n---\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "P", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -1320,12 +1314,11 @@ fn test_list_dir_only_with_limit() {
     let dir = init_vault();
 
     for name in &["aaa", "bbb", "ccc"] {
-        fs::create_dir_all(dir.path().join(format!("notes/{}", name))).unwrap();
-        fs::write(
-            dir.path().join(format!("notes/{}/note.md", name)),
-            format!("---\ntitle: Note {}\n---\n", name),
-        )
-        .unwrap();
+        granite()
+            .current_dir(dir.path())
+            .args(["new", &format!("Note {}", name), "--no-edit", "--dir", name])
+            .assert()
+            .success();
     }
 
     let output = granite()
@@ -1384,12 +1377,11 @@ fn test_list_dir_only_with_sort_is_ignored() {
     // the flag is accepted without error rather than conflicting.
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/p.md"),
-        "---\ntitle: P\n---\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "P", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
 
     granite()
         .current_dir(dir.path())
@@ -1404,16 +1396,16 @@ fn test_list_dir_only_with_sort_is_ignored() {
 fn test_list_depth_zero_shows_only_root_notes() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/root-note.md"),
-        "---\ntitle: Root Note\n---\n\n# Root Note\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/inbox/inbox-note.md"),
-        "---\ntitle: Inbox Note\n---\n\n# Inbox Note\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Root Note", "--no-edit"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Inbox Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1433,22 +1425,21 @@ fn test_list_depth_zero_shows_only_root_notes() {
 fn test_list_depth_one_includes_one_level_subdirs() {
     let dir = init_vault();
 
-    fs::write(
-        dir.path().join("notes/root-note.md"),
-        "---\ntitle: Root Note\n---\n\n# Root Note\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/inbox/inbox-note.md"),
-        "---\ntitle: Inbox Note\n---\n\n# Inbox Note\n",
-    )
-    .unwrap();
-    fs::create_dir_all(dir.path().join("notes/inbox/deep")).unwrap();
-    fs::write(
-        dir.path().join("notes/inbox/deep/deep-note.md"),
-        "---\ntitle: Deep Note\n---\n\n# Deep Note\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Root Note", "--no-edit"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Inbox Note", "--no-edit", "--dir", "inbox"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Deep Note", "--no-edit", "--dir", "inbox/deep"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1469,17 +1460,16 @@ fn test_list_depth_one_includes_one_level_subdirs() {
 fn test_list_depth_with_dir_is_relative() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects/2026")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/top.md"),
-        "---\ntitle: Projects Top\n---\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("notes/projects/2026/nested.md"),
-        "---\ntitle: Projects Nested\n---\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Projects Top", "--no-edit", "--dir", "projects"])
+        .assert()
+        .success();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Projects Nested", "--no-edit", "--dir", "projects/2026"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
@@ -1502,12 +1492,11 @@ fn test_list_depth_with_dir_is_relative() {
 fn test_list_depth_with_dir_only() {
     let dir = init_vault();
 
-    fs::create_dir_all(dir.path().join("notes/projects/2026/q1")).unwrap();
-    fs::write(
-        dir.path().join("notes/projects/2026/q1/note.md"),
-        "---\ntitle: Q1 Note\n---\n",
-    )
-    .unwrap();
+    granite()
+        .current_dir(dir.path())
+        .args(["new", "Q1 Note", "--no-edit", "--dir", "projects/2026/q1"])
+        .assert()
+        .success();
 
     let output = granite()
         .current_dir(dir.path())
