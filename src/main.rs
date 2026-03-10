@@ -54,6 +54,10 @@ enum Commands {
         /// Append piped stdin to the note (skips editor)
         #[arg(long)]
         append: bool,
+
+        /// Limit search to notes under notes/<subdir>/ (fuzzy-matched against available dirs)
+        #[arg(long)]
+        dir: Option<String>,
     },
 
     /// Print a note's content to stdout
@@ -269,7 +273,7 @@ fn main() -> Result<()> {
             )?;
         }
 
-        Commands::Edit { query, append } => {
+        Commands::Edit { query, append, dir } => {
             let vault_path = vault::resolve_vault()?;
             let stdin_content = if append && !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
                 use std::io::Read;
@@ -282,7 +286,7 @@ fn main() -> Result<()> {
             commands::edit::run(
                 &vault_path,
                 &query,
-                commands::edit::EditOptions { append },
+                commands::edit::EditOptions { append, dir },
                 stdin_content,
             )?;
         }
