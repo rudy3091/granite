@@ -591,6 +591,81 @@ fn test_edit_append_ambiguous_query_fails() {
         .stderr(predicate::str::contains("Ambiguous"));
 }
 
+// ─── edit --dir ───────────────────────────────────────────────────────────────
+
+#[test]
+fn test_edit_dir_filters_to_subdirectory() {
+    let dir = init_vault();
+
+    // Two notes with similar names in different directories
+    let inbox_note = dir.path().join("notes/inbox/log-note.md");
+    fs::create_dir_all(inbox_note.parent().unwrap()).unwrap();
+    fs::write(
+        &inbox_note,
+        "---\ntitle: Log Note\n---\n\n# Log Note\n\nInbox content.\n",
+    )
+    .unwrap();
+
+    let root_note = dir.path().join("notes/log-root.md");
+    fs::write(
+        &root_note,
+        "---\ntitle: Log Root\n---\n\n# Log Root\n\nRoot content.\n",
+    )
+    .unwrap();
+
+    // --append + --dir should match only the inbox note
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "--dir", "inbox", "log"])
+        .write_stdin("extra line\n")
+        .assert()
+        .success();
+
+    let inbox_content = fs::read_to_string(&inbox_note).unwrap();
+    let root_content = fs::read_to_string(&root_note).unwrap();
+
+    assert!(inbox_content.contains("extra line"), "inbox note should be appended");
+    assert!(!root_content.contains("extra line"), "root note should not be touched");
+}
+
+#[test]
+fn test_edit_dir_no_matching_directory_fails() {
+    let dir = init_vault();
+
+    let note_path = dir.path().join("notes/some-note.md");
+    fs::write(&note_path, "---\ntitle: Some Note\n---\n\n# Some Note\n").unwrap();
+
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "--dir", "nonexistent_zzz", "some"])
+        .write_stdin("extra\n")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No directories matching"));
+}
+
+#[test]
+fn test_edit_dir_no_notes_in_directory_fails() {
+    let dir = init_vault();
+
+    // Note exists at root but NOT in inbox; inbox has an unrelated note so it's indexed
+    let root_note = dir.path().join("notes/only-root.md");
+    fs::write(&root_note, "---\ntitle: Only Root\n---\n\n# Only Root\n").unwrap();
+
+    let inbox_other = dir.path().join("notes/inbox/other-inbox.md");
+    fs::create_dir_all(inbox_other.parent().unwrap()).unwrap();
+    fs::write(&inbox_other, "---\ntitle: Other Inbox\n---\n\n# Other Inbox\n").unwrap();
+
+    // inbox dir exists and is indexed, but "only-root" is not in it
+    granite()
+        .current_dir(dir.path())
+        .args(["edit", "--append", "--dir", "inbox", "only-root"])
+        .write_stdin("extra\n")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No notes matching"));
+}
+
 // ─── rename ──────────────────────────────────────────────────────────────────
 
 #[test]

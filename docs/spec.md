@@ -267,6 +267,9 @@ Open an existing note in `$EDITOR`.
 - If multiple matches, presents an interactive picker (using nucleo)
 - Updates `modified` timestamp in frontmatter on save
 
+**Flags:**
+- `--dir <subdir>` — limit search to notes under `notes/<subdir>/`; the `<subdir>` value is itself fuzzy-matched against available directories, and if multiple directories match an interactive picker is shown first
+
 #### `granite view <query>`
 
 Print a note's content to stdout.
