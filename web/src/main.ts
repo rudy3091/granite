@@ -3,6 +3,7 @@ import { init, type EditorHandle } from "./editor";
 interface NoteSummary {
   path: string;
   title: string;
+  modified_ts: number;
 }
 
 interface NoteDetail {
@@ -13,6 +14,7 @@ interface NoteDetail {
 
 const app = document.getElementById("app")!;
 app.innerHTML = `
+  <button id="sidebar-toggle" aria-label="Toggle note list"></button>
   <div id="sidebar">
     <h1>Granite</h1>
     <ul id="note-list"></ul>
@@ -25,6 +27,10 @@ app.innerHTML = `
     <div id="editor"></div>
   </div>
 `;
+
+const sidebar = document.getElementById("sidebar")!;
+const sidebarToggle = document.getElementById("sidebar-toggle")!;
+sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
 
 const noteList = document.getElementById("note-list")!;
 const saveBtn = document.getElementById("save-btn") as HTMLButtonElement;
@@ -42,6 +48,7 @@ function relativePath(path: string): string {
 
 async function loadNotes(): Promise<void> {
   const notes: NoteSummary[] = await fetch("/api/notes").then((r) => r.json());
+  notes.sort((a, b) => b.modified_ts - a.modified_ts);
   noteList.innerHTML = "";
   for (const note of notes) {
     const li = document.createElement("li");
@@ -54,6 +61,11 @@ async function loadNotes(): Promise<void> {
     });
     li.appendChild(a);
     noteList.appendChild(li);
+  }
+  // The sidebar is hidden, so the most recently modified note is opened by
+  // default — otherwise there's no way to get an editor onto the screen.
+  if (notes.length > 0) {
+    openNote(relativePath(notes[0].path));
   }
 }
 

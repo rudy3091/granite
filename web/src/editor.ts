@@ -1,4 +1,4 @@
-import { EditorView, basicSetup } from "codemirror";
+import { EditorView, minimalSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { vim, Vim } from "@replit/codemirror-vim";
 
@@ -11,7 +11,7 @@ export type OnSave = (content: string) => void;
 
 // Vim's `:w` maps to the same save action as the page's Save button.
 Vim.defineEx("write", "w", (cm: { cm6: EditorView }) => {
-  cm.cm6.dom.dispatchEvent(new CustomEvent("granite-save"));
+  cm.cm6.dom.dispatchEvent(new CustomEvent("granite-save", { bubbles: true }));
 });
 
 /**
@@ -25,7 +25,7 @@ export function init(
 ): EditorHandle {
   const view = new EditorView({
     doc: initialContent,
-    extensions: [vim(), basicSetup, markdown()],
+    extensions: [vim(), minimalSetup, markdown()],
     parent: container,
   });
 

@@ -6,17 +6,22 @@
     <title>Granite</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: system-ui, -apple-system, sans-serif; height: 100vh; display: flex; }
-      #sidebar { width: 260px; flex-shrink: 0; border-right: 1px solid #e5e7eb; overflow-y: auto; padding: .5rem; }
+      body { font-family: system-ui, -apple-system, sans-serif; height: 100vh; overflow: hidden; }
+      #app { height: 100%; display: flex; }
+      #sidebar { display: none; width: 260px; flex-shrink: 0; border-right: 1px solid #e5e7eb; overflow-y: auto; padding: .5rem; }
+      #sidebar.open { display: block; }
+      #sidebar-toggle { position: fixed; top: 0; right: 0; width: 24px; height: 24px; padding: 0; border: none; background: transparent; cursor: pointer; z-index: 10; }
+      #sidebar-toggle::after { content: ""; display: block; width: 8px; height: 8px; margin: 8px; border-radius: 50%; background: #d1d5db; }
+      #sidebar-toggle:hover::after { background: #9ca3af; }
       #sidebar h1 { font-size: 1rem; padding: .5rem; }
       #note-list { list-style: none; }
       #note-list li a { display: block; padding: .4rem .5rem; border-radius: 4px; color: #1a1a1a; text-decoration: none; font-size: .9rem; }
       #note-list li a:hover, #note-list li a.active { background: #eff6ff; }
-      #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-      #toolbar { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem; border-bottom: 1px solid #e5e7eb; }
+      #main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+      #toolbar { display: none; align-items: center; gap: .75rem; padding: .5rem .75rem; border-bottom: 1px solid #e5e7eb; }
       #toolbar button { padding: .35rem .9rem; border: 1px solid #d1d5db; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; }
       #status { color: #6b7280; font-size: .85em; }
-      #editor { flex: 1; overflow: auto; }
+      #editor { flex: 1; overflow: auto; min-height: 0; }
       .cm-editor { height: 100%; }
     </style>
   </head>
