@@ -412,58 +412,41 @@ Manage which vault granite operates on. Allows granite commands to work from any
 granite serve [--port 3000]
 ```
 
-Starts a local HTTP server that provides a file explorer, markdown viewer, and WYSIWYG editor. This is the primary way to browse, read, and edit notes outside the terminal, and is accessible from mobile devices on the same network.
+Starts a local HTTP server exposing a single editor-focused page: a note list sidebar plus a live-preview Vim-keybound markdown editor. This is the primary way to edit notes outside the terminal, and is accessible from mobile devices on the same network.
 
 ### Design Principles
 
-- **Read & write** — Notes can be edited directly in the browser via an Obsidian-style live-preview markdown editor with Vim keybindings, in addition to terminal editing. Both write to the same files under `notes/`.
-- **File explorer first** — The landing page is a navigable directory tree of `notes/`, not a dashboard.
-- **Rendered markdown** — Notes are rendered as HTML with wiki-links converted to clickable links.
+- **Editor-focused** — The whole UI is one page: pick a note from the sidebar, edit it, save. No separate rendered-markdown view, tag browser, or search page (deferred — see below).
+- **Read & write** — Notes are edited via an Obsidian-style live-preview markdown editor with Vim keybindings, in addition to terminal editing. Both write to the same files under `notes/`.
+- **Thin server** — `granite serve` is a JSON API (list/get/save notes) plus a static shell; all UI logic lives in the `web/` frontend.
 - **Mobile-friendly** — Responsive layout that works on phone screens. Not a priority target, but usable.
-- **Minimal frontend build** — A small `vite` + `pnpm` project produces the editor bundle (`CodeMirror 6` + `@replit/codemirror-vim`, same as Obsidian); everything else stays plain HTML/CSS with minimal vanilla JS. The build output is embedded into the binary — no separate frontend deploy step for end users.
+- **Minimal frontend build** — A `vite` + `pnpm` project (`web/`) builds `main.js`, embedded into the binary via `rust-embed`. The HTML shell itself (`<div id="app">` + a script tag) is a small static file kept in `granite-cli` directly (not vite output), with a structurally identical copy in `web/` so `pnpm dev` renders the same shell with HMR.
 
 ### Routes
 
 | Route | Description |
 |---|---|
-| `GET /` | File explorer: directory tree of `notes/` |
-| `GET /notes/<path>` | Rendered markdown view of a note |
-| `GET /tags` | List of all tags with note counts |
-| `GET /tags/<tag>` | List of notes with a given tag |
-| `GET /search?q=<query>` | Search results page |
+| `GET /` | The editor shell (static HTML, embedded in the binary) |
+| `GET /web/main.js` | The frontend bundle (sidebar + editor logic, built by `vite`) |
 | `GET /api/notes` | JSON: list of all notes with frontmatter metadata |
-| `GET /api/notes/<path>` | JSON: single note metadata + rendered HTML |
-| `GET /edit/<path>` | Live-preview editor view for a note |
-| `PUT /api/notes/<path>` | Save edited note content (body markdown), updates `modified` frontmatter |
+| `GET /api/notes/<path>` | JSON: single note metadata + raw content |
+| `PUT /api/notes/<path>` | Save edited note content (raw markdown), updates `modified` frontmatter |
 
-### File Explorer View
+### Editor UI
 
-The landing page shows the vault's `notes/` directory as a navigable tree:
+The single page shows:
 
-- Folders are expandable/collapsible
-- Each note shows its title (from frontmatter or filename) and tags
-- Sorted by last modified by default
-- Click a note to open its rendered view
+- A sidebar listing all notes (title, from `/api/notes`); clicking one loads its raw content into the editor
+- A CodeMirror 6 + `@replit/codemirror-vim` editor pane (same combination Obsidian uses)
+- A Save button and `:w` (Vim) both save via `PUT /api/notes/<path>`
 
-### Note View
-
-Individual note pages show:
-
-- Rendered markdown content (headings, lists, code blocks, images)
-- Wiki-links rendered as clickable internal links
-- Frontmatter displayed as subtle metadata (title, tags, dates)
-- Backlinks section at the bottom: list of notes linking to this note
-- Tag links that navigate to `/tags/<tag>`
-- An "Edit" button that switches to a live-preview editor (with Vim keybindings) for the note, saving back to the same markdown file
+Rendered markdown preview, wiki-link navigation, backlinks, tag browsing, and search are **not** part of the web UI yet — they were part of an earlier server-rendered prototype and were deliberately removed in favor of an editor-first minimum baseline. They may return as views built on top of the same JSON API in a later iteration; not currently scoped.
 
 ### Implementation
 
-- **Server:** `axum` with `tower-http` for static assets
-- **Rendering:** `pulldown-cmark` for GitHub Flavored Markdown → HTML conversion (tables, strikethrough, task lists, autolinks)
-- **Templates:** Simple HTML templates (handlebars or inline), no SPA
-- **Styling:** Single CSS file, responsive, minimal
-- **Editor frontend:** `vite` + `pnpm` project producing a `CodeMirror 6` + `@replit/codemirror-vim` editor bundle (same combination as Obsidian); built ahead of time and embedded into the binary via `rust-embed`. Not a full SPA — only the editor view uses the bundle, everything else stays server-rendered HTML.
-- **Index:** Reuses the same in-memory index as CLI commands; stays resident while server runs
+- **Server:** `axum`, serving a fixed set of JSON routes plus the static shell/bundle — no general-purpose static file server, no markdown rendering.
+- **Frontend:** `vite` + `pnpm` project in `web/`, producing a single ES module bundle (`main.js`) embedded into the binary via `rust-embed`. `web/src/editor.ts` wraps CodeMirror 6 + `@replit/codemirror-vim`; `web/src/main.ts` is the app (fetches `/api/notes`, renders the sidebar, mounts the editor, saves via `PUT`). Written in TypeScript.
+- **Index:** Reuses the same in-memory index as CLI commands; rebuilt and swapped in after each save so the note list stays current.
 
 ## 8. TUI Mode (Deferred)
 
@@ -512,18 +495,14 @@ Core CLI commands and the indexing engine.
 
 ### v0.2 — Web Viewer & Editor
 
-Web interface for browsing, reading, and editing notes.
+Web interface for editing notes, editor-first.
 
-- [ ] `granite serve` — local HTTP server (axum)
-- [ ] File explorer landing page (directory tree of notes)
-- [ ] Rendered markdown note view with clickable wiki-links
-- [ ] Backlinks displayed on each note page
-- [ ] Tag browsing pages
-- [ ] Search page
-- [ ] JSON API for note metadata
+- [x] `granite serve` — local HTTP server (axum)
+- [x] JSON API for note metadata (`GET /api/notes`, `GET /api/notes/<path>`)
+- [x] Live-preview markdown editor with Vim keybindings (`CodeMirror 6` + `@replit/codemirror-vim`, same as Obsidian; built via `vite` + `pnpm`, bundled into the binary at compile time)
+- [x] Save endpoint (`PUT /api/notes/<path>`) writing back to the note file and updating `modified`
+- [ ] File explorer / rendered markdown note view / backlinks / tag browsing / search page — deferred; not currently scoped (removed from an earlier prototype in favor of an editor-first minimum baseline, see §7)
 - [ ] Responsive CSS for mobile access
-- [ ] Live-preview markdown editor with Vim keybindings (`CodeMirror 6` + `@replit/codemirror-vim`, same as Obsidian; built via `vite` + `pnpm`, bundled into the binary at compile time)
-- [ ] Save endpoint (`PUT /api/notes/<path>`) writing back to the note file and updating `modified`
 
 ### v0.3 — TUI and Graph
 

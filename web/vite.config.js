@@ -3,10 +3,10 @@ import { defineConfig } from "vite";
 export default defineConfig({
   build: {
     lib: {
-      entry: "src/editor.ts",
+      entry: "src/main.ts",
       name: "GraniteEditor",
-      fileName: () => "editor.js",
-      formats: ["iife"],
+      fileName: () => "main.js",
+      formats: ["es"],
     },
     outDir: "dist",
     cssCodeSplit: false,
