@@ -242,7 +242,7 @@ impl Index {
             results.push((path.clone(), entry.clone(), score));
         }
 
-        results.sort_by(|a, b| b.2.cmp(&a.2));
+        results.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
         results.into_iter().map(|(p, e, _)| (p, e)).collect()
     }
 
@@ -396,5 +396,40 @@ mod tests {
     fn test_directories_empty_when_all_root() {
         let index = make_index(&["notes/foo.md", "notes/bar.md"]);
         assert!(index.directories().is_empty());
+    }
+
+    fn note(rel_path: &str) -> NoteEntry {
+        NoteEntry {
+            rel_path: rel_path.to_string(),
+            modified_ts: 0,
+            frontmatter: HashMap::new(),
+            forward_links: Vec::new(),
+            inline_tags: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_fuzzy_search_ties_are_deterministic() {
+        // Multiple notes tie on "contains" score for query "note".
+        let mut notes = HashMap::new();
+        for path in ["notes/zeta-note.md", "notes/alpha-note.md", "notes/mid-note.md"] {
+            notes.insert(path.to_string(), note(path));
+        }
+        let index = Index { notes };
+
+        let paths: Vec<String> = index
+            .fuzzy_search("note")
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+
+        assert_eq!(
+            paths,
+            vec![
+                "notes/alpha-note.md".to_string(),
+                "notes/mid-note.md".to_string(),
+                "notes/zeta-note.md".to_string(),
+            ]
+        );
     }
 }
