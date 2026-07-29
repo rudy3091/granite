@@ -2,6 +2,17 @@ import { EditorView, minimalSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { vim, Vim } from "@replit/codemirror-vim";
 
+const darkTheme = EditorView.theme(
+  {
+    "&": { backgroundColor: "#1e1e1e", color: "#e5e7eb" },
+    ".cm-content": { caretColor: "#e5e7eb" },
+    ".cm-gutters": { backgroundColor: "#1e1e1e", color: "#6b7280", border: "none" },
+    ".cm-activeLine": { backgroundColor: "#2a2a2a" },
+    ".cm-activeLineGutter": { backgroundColor: "#2a2a2a" },
+  },
+  { dark: true },
+);
+
 export interface EditorHandle {
   getValue(): string;
   save(): void;
@@ -23,9 +34,10 @@ export function init(
   initialContent: string,
   onSave: OnSave,
 ): EditorHandle {
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const view = new EditorView({
     doc: initialContent,
-    extensions: [vim(), minimalSetup, markdown()],
+    extensions: [vim(), minimalSetup, markdown(), ...(prefersDark ? [darkTheme] : [])],
     parent: container,
   });
 
