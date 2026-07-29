@@ -11,13 +11,13 @@ Granite is a local-first markdown management tool inspired by Obsidian, built fo
 1. **CLI workflow** — Fast, composable commands for daily note management from the terminal
 2. **Web viewer** — Local server for browsing and reading notes in a browser, accessible from mobile
 3. **TUI mode** — Interactive terminal UI for power users (deferred)
+4. **SDK / plugin foundation** — Core logic exposed as a reusable Rust library so external programs and future plugins can process note content (deferred, see §9 v0.4)
 
 ### Non-Goals
 
 - WYSIWYG or rich-text editing
 - Real-time collaboration
 - Cloud-hosted service (sync via git remotes such as GitHub is supported and encouraged)
-- Plugin/extension system
 
 ## 2. Core Concepts
 
@@ -50,6 +50,8 @@ Tags are inline markers using `#tag-name` syntax. Tags can also be declared in f
 ### Single Binary
 
 Granite ships as a single statically-linked Rust binary (`granite`). No runtime dependencies beyond `git` on the system PATH.
+
+Internally, the binary is split into a Cargo workspace: `granite-core` (library crate — vault, index, wiki-link, frontmatter, config, git logic; no CLI or output concerns) and `granite-cli` (binary crate — clap commands, stdout formatting, the `serve` web viewer). The CLI and web viewer both depend on `granite-core` the same way; a future plugin host or an external Rust program can depend on it too, without going through the CLI's stdout/JSON surface. This split is purely internal reorganization — the shipped binary name and all CLI behavior are unchanged.
 
 ### System Dependencies
 
@@ -527,10 +529,18 @@ Advanced search and interactive terminal UI.
 - [ ] Note templates system (multiple named templates)
 - [ ] Broken link detection and reporting
 
+### v0.4 — SDK & Plugin Foundation (deferred)
+
+Expose granite's core logic as a reusable Rust library, laying the groundwork for a future plugin system without committing to a plugin API yet.
+
+- [ ] Split the workspace into `granite-core` (library: vault, index, wiki-link, frontmatter, config, git) and `granite-cli` (binary: commands, output formatting, `serve`)
+- [ ] `granite-core` published as a standalone crate with a documented public API
+- [ ] No behavior change to the `granite` CLI binary or its output
+
 ### Deferred
 
 - Real-time collaboration
-- Plugin/extension system
+- Plugin system built on top of `granite-core` (API design, discovery/loading, sandboxing — not yet scoped)
 - End-to-end encryption
 - Cloud sync (beyond git remotes)
 - Web-based editing

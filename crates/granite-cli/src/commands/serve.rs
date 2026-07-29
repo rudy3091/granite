@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use walkdir::WalkDir;
 
-use crate::index::Index;
+use granite_core::index::Index;
 
 // ─── Shared server state ───────────────────────────────────────────────────
 
@@ -226,17 +226,17 @@ async fn handle_note(
         }
     };
 
-    let (fm, body) = crate::frontmatter::parse(&content);
+    let (fm, body) = granite_core::frontmatter::parse(&content);
     let fm = fm.unwrap_or_default();
 
-    let title = crate::frontmatter::get_title(&fm).unwrap_or_else(|| {
+    let title = granite_core::frontmatter::get_title(&fm).unwrap_or_else(|| {
         safe_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace('-', " "))
             .unwrap_or_else(|| "Untitled".to_string())
     });
 
-    let tags = crate::frontmatter::get_tags(&fm);
+    let tags = granite_core::frontmatter::get_tags(&fm);
     let tags_html: String = tags
         .iter()
         .map(|t| format!(r#"<a class="tag" href="/tags/{}">{}</a>"#, he(t), he(t)))
@@ -490,7 +490,7 @@ async fn handle_api_note(
         }
     };
 
-    let (fm, body) = crate::frontmatter::parse(&content);
+    let (fm, body) = granite_core::frontmatter::parse(&content);
     let fm = fm.unwrap_or_default();
 
     let note_key = format!("notes/{}", path.trim_start_matches('/'));
@@ -502,8 +502,8 @@ async fn handle_api_note(
 
     Json(serde_json::json!({
         "path": note_key,
-        "title": crate::frontmatter::get_title(&fm),
-        "tags": crate::frontmatter::get_tags(&fm),
+        "title": granite_core::frontmatter::get_title(&fm),
+        "tags": granite_core::frontmatter::get_tags(&fm),
         "html": html,
         "backlinks": backlinks,
     }))
@@ -578,7 +578,7 @@ fn preprocess_wikilinks(content: &str, index: &Index) -> String {
             let p = resolved.strip_prefix("notes/").unwrap_or(&resolved);
             format!("/notes/{}", p)
         } else {
-            format!("/notes/{}.md", crate::vault::to_kebab_case(target))
+            format!("/notes/{}.md", granite_core::vault::to_kebab_case(target))
         };
 
         format!("[{}]({})", display, href)

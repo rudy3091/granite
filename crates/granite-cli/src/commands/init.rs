@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::config::VaultConfig;
-use crate::git;
+use granite_core::config::VaultConfig;
+use granite_core::git;
 
 pub fn run(path: Option<&str>) -> Result<()> {
     let vault_path = match path {
@@ -23,7 +23,7 @@ pub fn run(path: Option<&str>) -> Result<()> {
         .to_string();
 
     let config = VaultConfig {
-        vault: crate::config::VaultSection { name: vault_name },
+        vault: granite_core::config::VaultSection { name: vault_name },
         ..VaultConfig::default()
     };
     config.save(&vault_path)?;

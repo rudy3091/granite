@@ -1,8 +1,8 @@
 use anyhow::{bail, Result};
 use std::path::PathBuf;
 
-use crate::config::{GlobalConfig, VaultEntry};
-use crate::vault;
+use granite_core::config::{GlobalConfig, VaultEntry};
+use granite_core::vault;
 
 pub enum ContextSubcommand {
     Show,

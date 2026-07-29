@@ -1,0 +1,15 @@
+[package]
+name = "granite-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core vault, index, and wiki-link logic for granite — usable as a standalone library"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+toml = "0.8"
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2"
+anyhow = "1"

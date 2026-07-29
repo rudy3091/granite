@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use crate::index::Index;
+use granite_core::index::Index;
 
 pub struct LinksOptions {
     pub backlinks_only: bool,

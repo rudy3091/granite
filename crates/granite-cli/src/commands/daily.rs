@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::commands::new;
-use crate::config::VaultConfig;
+use granite_core::config::VaultConfig;
 
 pub fn run(vault_path: &Path) -> Result<()> {
     let config = VaultConfig::load(vault_path)?;

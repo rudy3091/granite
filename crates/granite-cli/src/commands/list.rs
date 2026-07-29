@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 
-use crate::index::{fuzzy_match, Index, NoteEntry};
+use granite_core::index::{fuzzy_match, Index, NoteEntry};
 
 pub enum OutputFormat {
     Plain,

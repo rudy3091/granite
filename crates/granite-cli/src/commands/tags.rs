@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::index::Index;
+use granite_core::index::Index;
 
 pub fn run(vault_path: &Path, notes_for_tag: Option<&str>) -> Result<()> {
     let index = Index::build(vault_path)?;

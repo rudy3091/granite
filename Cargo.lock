@@ -394,7 +394,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "granite"
+name = "granite-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -402,6 +402,7 @@ dependencies = [
  "axum",
  "chrono",
  "clap",
+ "granite-core",
  "predicates",
  "pulldown-cmark",
  "regex",
@@ -410,6 +411,19 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "tokio",
+ "walkdir",
+]
+
+[[package]]
+name = "granite-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
  "toml",
  "walkdir",
 ]

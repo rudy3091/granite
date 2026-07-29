@@ -1,9 +1,9 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use crate::index::Index;
-use crate::vault;
-use crate::wikilink;
+use granite_core::index::Index;
+use granite_core::vault;
+use granite_core::wikilink;
 
 pub fn run(vault_path: &Path, old_query: &str, new_name: &str) -> Result<()> {
     let index = Index::build(vault_path)?;
@@ -37,14 +37,14 @@ pub fn run(vault_path: &Path, old_query: &str, new_name: &str) -> Result<()> {
 
     // Update frontmatter title in renamed file
     let content = std::fs::read_to_string(&new_abs_path)?;
-    let (fm, body) = crate::frontmatter::parse(&content);
+    let (fm, body) = granite_core::frontmatter::parse(&content);
     if let Some(mut fm) = fm {
         fm.insert(
             "title".to_string(),
             serde_yaml::Value::String(new_name.to_string()),
         );
-        crate::frontmatter::set_modified(&mut fm);
-        let new_content = crate::frontmatter::serialize(&fm, body);
+        granite_core::frontmatter::set_modified(&mut fm);
+        let new_content = granite_core::frontmatter::serialize(&fm, body);
         std::fs::write(&new_abs_path, new_content)?;
     }
 

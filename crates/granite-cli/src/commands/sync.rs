@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::config::VaultConfig;
-use crate::git;
+use granite_core::config::VaultConfig;
+use granite_core::git;
 
 pub enum SyncSubcommand {
     Default { message: Option<String> },

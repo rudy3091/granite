@@ -1,10 +1,4 @@
 mod commands;
-mod config;
-mod frontmatter;
-mod git;
-mod index;
-mod vault;
-mod wikilink;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -251,7 +245,7 @@ fn main() -> Result<()> {
             dir,
             content,
         } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             // Read from stdin when piped; stdin content implies no-edit
             let (resolved_content, resolved_no_edit) = if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
                 use std::io::Read;
@@ -274,7 +268,7 @@ fn main() -> Result<()> {
         }
 
         Commands::Edit { query, append, dir } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             let stdin_content = if append && !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
                 use std::io::Read;
                 let mut buf = String::new();
@@ -296,12 +290,12 @@ fn main() -> Result<()> {
             no_frontmatter,
             dir,
         } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             commands::view::run(&vault_path, &query, commands::view::ViewOptions { no_frontmatter, dir })?;
         }
 
         Commands::List { tag, sort, tree, paths, format, no_summary, limit, dir, dir_only, depth } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             let output_format = match format.as_deref() {
                 Some("json") => commands::list::OutputFormat::Json,
                 Some("plain") | None => commands::list::OutputFormat::Plain,
@@ -320,7 +314,7 @@ fn main() -> Result<()> {
             pattern,
             case_sensitive,
         } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             commands::search::run(
                 &vault_path,
                 &pattern,
@@ -334,7 +328,7 @@ fn main() -> Result<()> {
             forward,
             orphans,
         } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             commands::links::run(
                 &vault_path,
                 note.as_deref(),
@@ -347,12 +341,12 @@ fn main() -> Result<()> {
         }
 
         Commands::Tags { notes } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             commands::tags::run(&vault_path, notes.as_deref())?;
         }
 
         Commands::Daily => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             commands::daily::run(&vault_path)?;
         }
 
@@ -360,7 +354,7 @@ fn main() -> Result<()> {
             subcommand,
             message,
         } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             let subcmd = match subcommand {
                 None => commands::sync::SyncSubcommand::Default { message },
                 Some(SyncCommands::Status) => commands::sync::SyncSubcommand::Status,
@@ -372,12 +366,12 @@ fn main() -> Result<()> {
         }
 
         Commands::Rename { old, new } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             commands::rename::run(&vault_path, &old, &new)?;
         }
 
         Commands::Serve { subcommand, port } => {
-            let vault_path = vault::resolve_vault()?;
+            let vault_path = granite_core::vault::resolve_vault()?;
             match subcommand {
                 None => commands::serve::run(&vault_path, port)?,
                 Some(ServeCommands::Kill) => commands::serve::kill(&vault_path)?,
@@ -386,7 +380,7 @@ fn main() -> Result<()> {
 
         Commands::ServeFg { vault_path, port } => {
             let vp = std::path::PathBuf::from(&vault_path);
-            let index = index::Index::build(&vp)?;
+            let index = granite_core::index::Index::build(&vp)?;
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(commands::serve::run_daemon(vp, port, index))?;
         }
