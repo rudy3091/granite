@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>granite editor (dev)</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      #editor { border: 1px solid #d1d5db; border-radius: 6px; min-height: 300px; }
+    </style>
+  </head>
+  <body>
+    <p>Dev harness for the granite web editor. Run <code>:w</code> in normal mode to trigger save (logs to console here).</p>
+    <div id="editor"></div>
+    <script type="module">
+      import { init } from "./src/editor.ts";
+      init(document.getElementById("editor"), "# Hello\n\nEdit me with vim keybindings.\n", (content) => {
+        console.log("saved:", content);
+      });
+    </script>
+  </body>
+</html>

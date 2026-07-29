@@ -9,13 +9,12 @@ Granite is a local-first markdown management tool inspired by Obsidian, built fo
 ### Design Priorities
 
 1. **CLI workflow** — Fast, composable commands for daily note management from the terminal
-2. **Web viewer** — Local server for browsing and reading notes in a browser, accessible from mobile
+2. **Web viewer & editor** — Local server for browsing, reading, and editing notes in a browser, accessible from mobile
 3. **TUI mode** — Interactive terminal UI for power users (deferred)
 4. **SDK / plugin foundation** — Core logic exposed as a reusable Rust library so external programs and future plugins can process note content (deferred, see §9 v0.4)
 
 ### Non-Goals
 
-- WYSIWYG or rich-text editing
 - Real-time collaboration
 - Cloud-hosted service (sync via git remotes such as GitHub is supported and encouraged)
 
@@ -49,7 +48,7 @@ Tags are inline markers using `#tag-name` syntax. Tags can also be declared in f
 
 ### Single Binary
 
-Granite ships as a single statically-linked Rust binary (`granite`). No runtime dependencies beyond `git` on the system PATH.
+Granite ships as a single statically-linked Rust binary (`granite`). No runtime dependencies beyond `git` on the system PATH. The web editor's frontend (built with `vite` + `pnpm`) is compiled to static JS/CSS ahead of time and embedded into the binary at build time (e.g. via `rust-embed`) — end users never need Node.js, pnpm, or a browser build step installed.
 
 Internally, the binary is split into a Cargo workspace: `granite-core` (library crate — vault, index, wiki-link, frontmatter, config, git logic; no CLI or output concerns) and `granite-cli` (binary crate — clap commands, stdout formatting, the `serve` web viewer). The CLI and web viewer both depend on `granite-core` the same way; a future plugin host or an external Rust program can depend on it too, without going through the CLI's stdout/JSON surface. This split is purely internal reorganization — the shipped binary name and all CLI behavior are unchanged.
 
@@ -66,6 +65,7 @@ Internally, the binary is split into a Cargo workspace: `granite-core` (library 
 | Markdown parsing | `pulldown-cmark` | GFM support (tables, strikethrough, task lists, autolinks), link extraction, HTML rendering |
 | Frontmatter | `serde` + `serde_yaml` | YAML frontmatter parsing for index and metadata |
 | Web server | `axum` | Local web viewer with file browsing |
+| Web editor frontend | `vite` + `pnpm` (build-time only) | Markdown editor via `CodeMirror 6` + `@replit/codemirror-vim` — the same combination Obsidian uses for its live-preview editor with Vim keybindings; output bundled into the Rust binary at compile time, no Node.js needed at runtime |
 | TUI framework | `ratatui` + `crossterm` | Deferred: interactive terminal UI |
 
 ### Context Resolution
@@ -412,15 +412,15 @@ Manage which vault granite operates on. Allows granite commands to work from any
 granite serve [--port 3000]
 ```
 
-Starts a local HTTP server that provides a read-only file explorer and markdown viewer. This is the primary way to browse and read notes outside the terminal, and is accessible from mobile devices on the same network.
+Starts a local HTTP server that provides a file explorer, markdown viewer, and WYSIWYG editor. This is the primary way to browse, read, and edit notes outside the terminal, and is accessible from mobile devices on the same network.
 
 ### Design Principles
 
-- **Read-only** — No editing through the web interface. Editing is done in the terminal.
+- **Read & write** — Notes can be edited directly in the browser via an Obsidian-style live-preview markdown editor with Vim keybindings, in addition to terminal editing. Both write to the same files under `notes/`.
 - **File explorer first** — The landing page is a navigable directory tree of `notes/`, not a dashboard.
 - **Rendered markdown** — Notes are rendered as HTML with wiki-links converted to clickable links.
 - **Mobile-friendly** — Responsive layout that works on phone screens. Not a priority target, but usable.
-- **Zero JS frameworks** — Plain HTML/CSS with minimal vanilla JS. Fast to load, no build step for frontend.
+- **Minimal frontend build** — A small `vite` + `pnpm` project produces the editor bundle (`CodeMirror 6` + `@replit/codemirror-vim`, same as Obsidian); everything else stays plain HTML/CSS with minimal vanilla JS. The build output is embedded into the binary — no separate frontend deploy step for end users.
 
 ### Routes
 
@@ -433,6 +433,8 @@ Starts a local HTTP server that provides a read-only file explorer and markdown 
 | `GET /search?q=<query>` | Search results page |
 | `GET /api/notes` | JSON: list of all notes with frontmatter metadata |
 | `GET /api/notes/<path>` | JSON: single note metadata + rendered HTML |
+| `GET /edit/<path>` | Live-preview editor view for a note |
+| `PUT /api/notes/<path>` | Save edited note content (body markdown), updates `modified` frontmatter |
 
 ### File Explorer View
 
@@ -452,6 +454,7 @@ Individual note pages show:
 - Frontmatter displayed as subtle metadata (title, tags, dates)
 - Backlinks section at the bottom: list of notes linking to this note
 - Tag links that navigate to `/tags/<tag>`
+- An "Edit" button that switches to a live-preview editor (with Vim keybindings) for the note, saving back to the same markdown file
 
 ### Implementation
 
@@ -459,6 +462,7 @@ Individual note pages show:
 - **Rendering:** `pulldown-cmark` for GitHub Flavored Markdown → HTML conversion (tables, strikethrough, task lists, autolinks)
 - **Templates:** Simple HTML templates (handlebars or inline), no SPA
 - **Styling:** Single CSS file, responsive, minimal
+- **Editor frontend:** `vite` + `pnpm` project producing a `CodeMirror 6` + `@replit/codemirror-vim` editor bundle (same combination as Obsidian); built ahead of time and embedded into the binary via `rust-embed`. Not a full SPA — only the editor view uses the bundle, everything else stays server-rendered HTML.
 - **Index:** Reuses the same in-memory index as CLI commands; stays resident while server runs
 
 ## 8. TUI Mode (Deferred)
@@ -506,9 +510,9 @@ Core CLI commands and the indexing engine.
 - [ ] Wiki-link parsing and resolution (filename → title → alias)
 - [ ] YAML frontmatter auto-management (`created`, `modified`)
 
-### v0.2 — Web Viewer
+### v0.2 — Web Viewer & Editor
 
-Read-only web interface for browsing and reading notes.
+Web interface for browsing, reading, and editing notes.
 
 - [ ] `granite serve` — local HTTP server (axum)
 - [ ] File explorer landing page (directory tree of notes)
@@ -518,12 +522,13 @@ Read-only web interface for browsing and reading notes.
 - [ ] Search page
 - [ ] JSON API for note metadata
 - [ ] Responsive CSS for mobile access
+- [ ] Live-preview markdown editor with Vim keybindings (`CodeMirror 6` + `@replit/codemirror-vim`, same as Obsidian; built via `vite` + `pnpm`, bundled into the binary at compile time)
+- [ ] Save endpoint (`PUT /api/notes/<path>`) writing back to the note file and updating `modified`
 
-### v0.3 — Search and TUI
+### v0.3 — TUI and Graph
 
-Advanced search and interactive terminal UI.
+Interactive terminal UI and link visualization.
 
-- [ ] Full-text search via tantivy index (replaces regex search)
 - [ ] `granite tui` — ratatui-based interactive browser
 - [ ] `granite graph` — link graph visualization (ASCII or web)
 - [ ] Note templates system (multiple named templates)
@@ -537,10 +542,15 @@ Expose granite's core logic as a reusable Rust library, laying the groundwork fo
 - [ ] `granite-core` published as a standalone crate with a documented public API
 - [ ] No behavior change to the `granite` CLI binary or its output
 
+### v0.5 — Full-text Search
+
+Replace regex-based search with a proper full-text index once the above are done.
+
+- [ ] Full-text search via tantivy index (replaces regex search), used by both `granite search` and the web viewer's search page
+
 ### Deferred
 
 - Real-time collaboration
 - Plugin system built on top of `granite-core` (API design, discovery/loading, sandboxing — not yet scoped)
 - End-to-end encryption
 - Cloud sync (beyond git remotes)
-- Web-based editing

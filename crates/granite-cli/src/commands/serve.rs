@@ -8,19 +8,28 @@ use axum::{
 };
 use pulldown_cmark::{html as cm_html, Options, Parser};
 use regex::RegexBuilder;
+use rust_embed::RustEmbed;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::net::TcpListener;
 use walkdir::WalkDir;
 
 use granite_core::index::Index;
+
+/// The `web/` frontend (vite + pnpm), built by `build.rs` and embedded at
+/// compile time — end users never need Node.js/pnpm at runtime.
+#[derive(RustEmbed)]
+#[folder = "../../web/dist"]
+struct EditorAssets;
 
 // ─── Shared server state ───────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct AppState {
     vault_path: Arc<PathBuf>,
-    index: Arc<Index>,
+    /// Rebuilt and swapped in whole after a save, so titles/tags/backlinks
+    /// stay current without a more granular incremental-update mechanism.
+    index: Arc<RwLock<Arc<Index>>>,
 }
 
 // ─── Public entry points ────────────────────────────────────────────────────
@@ -135,17 +144,22 @@ pub fn run(vault_path: &Path, port: u16) -> Result<()> {
 pub async fn run_daemon(vault_path: PathBuf, port: u16, index: Index) -> Result<()> {
     let state = AppState {
         vault_path: Arc::new(vault_path),
-        index: Arc::new(index),
+        index: Arc::new(RwLock::new(Arc::new(index))),
     };
 
     let app = Router::new()
         .route("/", get(handle_index))
         .route("/notes/*path", get(handle_note))
+        .route("/edit/*path", get(handle_note_edit))
         .route("/tags", get(handle_tags))
         .route("/tags/:tag", get(handle_tag))
         .route("/search", get(handle_search))
         .route("/api/notes", get(handle_api_notes))
-        .route("/api/notes/*path", get(handle_api_note))
+        .route(
+            "/api/notes/*path",
+            get(handle_api_note).put(handle_save_note),
+        )
+        .route("/web/editor.js", get(handle_editor_js))
         .with_state(state);
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
@@ -155,6 +169,11 @@ pub async fn run_daemon(vault_path: PathBuf, port: u16, index: Index) -> Result<
 
 // ─── Route handlers ─────────────────────────────────────────────────────────
 
+/// Snapshot the current index. Cheap: clones an `Arc`, not the index itself.
+fn snapshot(state: &AppState) -> Arc<Index> {
+    state.index.read().unwrap().clone()
+}
+
 /// GET / — file explorer: list of all notes sorted by modification time.
 async fn handle_index(State(state): State<AppState>) -> Html<String> {
     let vault_name = state
@@ -163,12 +182,16 @@ async fn handle_index(State(state): State<AppState>) -> Html<String> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Vault".to_string());
 
-    let mut entries: Vec<_> = state.index.notes.values().collect();
+    let index = snapshot(&state);
+    let mut entries: Vec<_> = index.notes.values().collect();
     entries.sort_by(|a, b| b.modified_ts.cmp(&a.modified_ts));
 
     let mut items = String::new();
     for entry in &entries {
-        let rel = entry.rel_path.strip_prefix("notes/").unwrap_or(&entry.rel_path);
+        let rel = entry
+            .rel_path
+            .strip_prefix("notes/")
+            .unwrap_or(&entry.rel_path);
         let tags_html: String = entry
             .all_tags()
             .iter()
@@ -184,8 +207,7 @@ async fn handle_index(State(state): State<AppState>) -> Html<String> {
     }
 
     if items.is_empty() {
-        items =
-            "<p>No notes found. Create one with <code>granite new</code>.</p>".to_string();
+        items = "<p>No notes found. Create one with <code>granite new</code>.</p>".to_string();
     }
 
     Html(page(
@@ -218,11 +240,7 @@ async fn handle_note(
     let content = match std::fs::read_to_string(&safe_path) {
         Ok(c) => c,
         Err(_) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Html(error_page("Note not found")),
-            )
-                .into_response()
+            return (StatusCode::NOT_FOUND, Html(error_page("Note not found"))).into_response()
         }
     };
 
@@ -244,12 +262,13 @@ async fn handle_note(
         .join(" ");
 
     // Pre-process wiki-links, then render markdown → HTML.
-    let processed = preprocess_wikilinks(body, &state.index);
+    let index = snapshot(&state);
+    let processed = preprocess_wikilinks(body, &index);
     let rendered = render_markdown(&processed);
 
     // Compute backlinks from the in-memory index.
     let note_key = format!("notes/{}", path.trim_start_matches('/'));
-    let backlinks_map = state.index.backlinks();
+    let backlinks_map = index.backlinks();
     let backlinks = backlinks_map.get(&note_key).cloned().unwrap_or_default();
 
     let backlinks_html = if backlinks.is_empty() {
@@ -259,8 +278,7 @@ async fn handle_note(
             .iter()
             .map(|p| {
                 let rel = p.strip_prefix("notes/").unwrap_or(p);
-                let bl_title = state
-                    .index
+                let bl_title = index
                     .notes
                     .get(p)
                     .map(|e| e.title())
@@ -281,10 +299,12 @@ async fn handle_note(
     let body_html = format!(
         r#"<h1>{}</h1>
 <div class="frontmatter-meta">{}</div>
+<p><a href="/edit/{}">Edit</a></p>
 <div class="note-content">{}</div>
 {}"#,
         he(&title),
         tags_html,
+        he(path.trim_start_matches('/')),
         rendered,
         backlinks_html
     );
@@ -292,9 +312,127 @@ async fn handle_note(
     Html(page(&title, &body_html)).into_response()
 }
 
+/// GET /edit/*path — Vim-keybound live-preview editor for a note.
+async fn handle_note_edit(
+    State(state): State<AppState>,
+    AxumPath(path): AxumPath<String>,
+) -> impl IntoResponse {
+    let safe_path = match safe_notes_path(&state.vault_path, &path) {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::FORBIDDEN,
+                Html(error_page("Access denied: invalid path")),
+            )
+                .into_response()
+        }
+    };
+
+    let content = match std::fs::read_to_string(&safe_path) {
+        Ok(c) => c,
+        Err(_) => {
+            return (StatusCode::NOT_FOUND, Html(error_page("Note not found"))).into_response()
+        }
+    };
+
+    let title = safe_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().replace('-', " "))
+        .unwrap_or_else(|| "Untitled".to_string());
+
+    let api_path = path.trim_start_matches('/');
+    let body_html = format!(
+        r#"<h1>Editing: {title}</h1>
+<p class="meta">Vim keybindings enabled — use <code>:w</code> or the Save button.</p>
+<div id="editor"></div>
+<p><button id="save-btn">Save</button> <span id="save-status" class="meta"></span></p>
+<script src="/web/editor.js"></script>
+<script>
+(function () {{
+  var notePath = {path_js};
+  var initial = {content_js};
+  function save(text) {{
+    var status = document.getElementById('save-status');
+    status.textContent = 'Saving…';
+    fetch('/api/notes/' + notePath, {{ method: 'PUT', body: text }})
+      .then(function (r) {{ status.textContent = r.ok ? 'Saved' : 'Save failed'; }})
+      .catch(function () {{ status.textContent = 'Save failed'; }});
+  }}
+  var editor = GraniteEditor.init(document.getElementById('editor'), initial, save);
+  document.getElementById('save-btn').addEventListener('click', function () {{ editor.save(); }});
+}})();
+</script>"#,
+        title = he(&title),
+        path_js = js_string(api_path),
+        content_js = js_string(&content),
+    );
+
+    Html(page(&format!("Edit {}", title), &body_html)).into_response()
+}
+
+/// PUT /api/notes/*path — save edited note content, updating `modified`.
+async fn handle_save_note(
+    State(state): State<AppState>,
+    AxumPath(path): AxumPath<String>,
+    body: String,
+) -> impl IntoResponse {
+    let safe_path = match safe_notes_path(&state.vault_path, &path) {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "Access denied"})),
+            )
+                .into_response()
+        }
+    };
+
+    let updated = match granite_core::frontmatter::update_modified_in_content(&body) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+    };
+
+    if let Err(e) = std::fs::write(&safe_path, &updated) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+            .into_response();
+    }
+
+    // Rebuild the index so titles/tags/backlinks reflect the edit on the
+    // next request; a full rebuild is simplest given no incremental API.
+    if let Ok(new_index) = Index::build(&state.vault_path) {
+        if let Ok(mut guard) = state.index.write() {
+            *guard = Arc::new(new_index);
+        }
+    }
+
+    Json(serde_json::json!({"ok": true})).into_response()
+}
+
+/// GET /web/editor.js — the embedded editor bundle (built by `build.rs`).
+async fn handle_editor_js() -> impl IntoResponse {
+    match EditorAssets::get("editor.js") {
+        Some(file) => (
+            [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+            file.data.into_owned(),
+        )
+            .into_response(),
+        None => (StatusCode::NOT_FOUND, "editor.js not found").into_response(),
+    }
+}
+
 /// GET /tags — list of all tags with note counts.
 async fn handle_tags(State(state): State<AppState>) -> Html<String> {
-    let tag_index = state.index.tag_index();
+    let index = snapshot(&state);
+    let tag_index = index.tag_index();
     let mut tags: Vec<_> = tag_index.iter().collect();
     tags.sort_by_key(|(t, _)| t.to_lowercase());
 
@@ -324,7 +462,8 @@ async fn handle_tag(
     State(state): State<AppState>,
     AxumPath(tag): AxumPath<String>,
 ) -> impl IntoResponse {
-    let tag_index = state.index.tag_index();
+    let index = snapshot(&state);
+    let tag_index = index.tag_index();
     let notes = match tag_index.get(&tag) {
         Some(n) => n.clone(),
         None => {
@@ -340,8 +479,7 @@ async fn handle_tag(
         .iter()
         .map(|p| {
             let rel = p.strip_prefix("notes/").unwrap_or(p);
-            let title = state
-                .index
+            let title = index
                 .notes
                 .get(p)
                 .map(|e| e.title())
@@ -386,21 +524,18 @@ async fn handle_search(
     );
 
     if query.is_empty() {
-        return Html(page(
-            "Search",
-            &format!("<h1>Search</h1>{}", search_form),
-        ));
+        return Html(page("Search", &format!("<h1>Search</h1>{}", search_form)));
     }
 
     let results = search_notes(&state.vault_path, query);
     let count = results.len();
+    let index = snapshot(&state);
 
     let results_html: String = results
         .iter()
         .map(|(rel_path, lines)| {
             let display = rel_path.strip_prefix("notes/").unwrap_or(rel_path);
-            let title = state
-                .index
+            let title = index
                 .notes
                 .get(rel_path.as_str())
                 .map(|e| e.title())
@@ -436,9 +571,7 @@ async fn handle_search(
     } else {
         format!(
             "<h1>Search</h1>{}<p class=\"meta\">{} file(s) matched</p>{}",
-            search_form,
-            count,
-            results_html
+            search_form, count, results_html
         )
     };
 
@@ -447,8 +580,8 @@ async fn handle_search(
 
 /// GET /api/notes — JSON list of all notes with metadata.
 async fn handle_api_notes(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let notes: Vec<_> = state
-        .index
+    let index = snapshot(&state);
+    let notes: Vec<_> = index
         .notes
         .values()
         .map(|e| {
@@ -493,11 +626,12 @@ async fn handle_api_note(
     let (fm, body) = granite_core::frontmatter::parse(&content);
     let fm = fm.unwrap_or_default();
 
+    let index = snapshot(&state);
     let note_key = format!("notes/{}", path.trim_start_matches('/'));
-    let backlinks_map = state.index.backlinks();
+    let backlinks_map = index.backlinks();
     let backlinks = backlinks_map.get(&note_key).cloned().unwrap_or_default();
 
-    let processed = preprocess_wikilinks(body, &state.index);
+    let processed = preprocess_wikilinks(body, &index);
     let html = render_markdown(&processed);
 
     Json(serde_json::json!({
@@ -564,8 +698,8 @@ fn is_process_running(pid: u32) -> bool {
 /// Replace `[[target]]` / `[[target|display]]` with standard markdown links
 /// so that pulldown-cmark renders them as clickable `<a>` tags.
 fn preprocess_wikilinks(content: &str, index: &Index) -> String {
-    use std::sync::LazyLock;
     use regex::Regex;
+    use std::sync::LazyLock;
 
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"\[\[([^\]\|]+?)(?:\|([^\]]+?))?\]\]").unwrap());
@@ -602,10 +736,7 @@ fn render_markdown(content: &str) -> String {
 /// Search for lines matching `query` (case-insensitive regex) across all notes.
 /// Returns a list of `(rel_path, [(line_number, line_text)])`.
 fn search_notes(vault_path: &Path, query: &str) -> Vec<(String, Vec<(usize, String)>)> {
-    let re = match RegexBuilder::new(query)
-        .case_insensitive(true)
-        .build()
-    {
+    let re = match RegexBuilder::new(query).case_insensitive(true).build() {
         Ok(r) => r,
         Err(_) => return vec![],
     };
@@ -613,10 +744,7 @@ fn search_notes(vault_path: &Path, query: &str) -> Vec<(String, Vec<(usize, Stri
     let notes_dir = vault_path.join("notes");
     let mut results = Vec::new();
 
-    for entry in WalkDir::new(&notes_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in WalkDir::new(&notes_dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
@@ -651,6 +779,14 @@ fn search_notes(vault_path: &Path, query: &str) -> Vec<(String, Vec<(usize, Stri
     }
 
     results
+}
+
+/// Serialize a string as a JS string literal safe to inline in a `<script>`
+/// block (escapes `</` so note content can't prematurely close the tag).
+fn js_string(s: &str) -> String {
+    serde_json::to_string(s)
+        .unwrap_or_else(|_| "\"\"".to_string())
+        .replace("</", "<\\/")
 }
 
 /// Minimal HTML escaping for user-supplied strings inserted into HTML.
