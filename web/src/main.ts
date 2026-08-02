@@ -1,3 +1,4 @@
+import "./style.css";
 import { init, type EditorHandle } from "./editor";
 
 interface NoteSummary {

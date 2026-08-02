@@ -445,7 +445,7 @@ Rendered markdown preview, wiki-link navigation, backlinks, tag browsing, and se
 ### Implementation
 
 - **Server:** `axum`, serving a fixed set of JSON routes plus the static shell/bundle — no general-purpose static file server, no markdown rendering.
-- **Frontend:** `vite` + `pnpm` project in `web/`, producing a single ES module bundle (`main.js`) embedded into the binary via `rust-embed`. `web/src/editor.ts` wraps CodeMirror 6 + `@replit/codemirror-vim`; `web/src/main.ts` is the app (fetches `/api/notes`, renders the sidebar, mounts the editor, saves via `PUT`). Written in TypeScript.
+- **Frontend:** `vite` + `pnpm` project in `web/`, producing an ES module bundle (`main.js`) and its stylesheet (`style.css`), both embedded into the binary via `rust-embed`. `web/src/editor.ts` wraps CodeMirror 6 + `@replit/codemirror-vim`; `web/src/main.ts` is the app (fetches `/api/notes`, renders the sidebar, mounts the editor, saves via `PUT`) and imports `web/src/style.css`, the single source of the UI's CSS shared by both the vite dev shell and the embedded static shell. Written in TypeScript.
 - **Index:** Reuses the same in-memory index as CLI commands; rebuilt and swapped in after each save so the note list stays current.
 
 ## 8. TUI Mode (Deferred)
