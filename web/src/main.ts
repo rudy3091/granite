@@ -96,4 +96,19 @@ function save(content: string): void {
 
 saveBtn.addEventListener("click", () => handle?.save());
 
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.key === "s") {
+      e.preventDefault();
+      handle?.save();
+    } else if (e.key === "f") {
+      e.preventDefault();
+      sidebar.classList.toggle("open");
+    }
+  },
+  { capture: true },
+);
+
 loadNotes();
