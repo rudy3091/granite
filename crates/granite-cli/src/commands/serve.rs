@@ -172,6 +172,23 @@ fn snapshot(state: &AppState) -> Arc<Index> {
     state.index.read().unwrap().clone()
 }
 
+/// Rebuild the index from disk and swap it in, so notes added or changed
+/// outside this server (e.g. `granite new` in another terminal, or a file
+/// dropped straight into `notes/`) are picked up. Falls back to the current
+/// snapshot if the rebuild fails (e.g. transient I/O error).
+fn refresh_index(state: &AppState) -> Arc<Index> {
+    match Index::build(&state.vault_path) {
+        Ok(new_index) => {
+            let new_index = Arc::new(new_index);
+            if let Ok(mut guard) = state.index.write() {
+                *guard = new_index.clone();
+            }
+            new_index
+        }
+        Err(_) => snapshot(state),
+    }
+}
+
 /// PUT /api/notes/*path — save edited note content, updating `modified`.
 async fn handle_save_note(
     State(state): State<AppState>,
@@ -210,11 +227,7 @@ async fn handle_save_note(
 
     // Rebuild the index so titles/tags/backlinks reflect the edit on the
     // next request; a full rebuild is simplest given no incremental API.
-    if let Ok(new_index) = Index::build(&state.vault_path) {
-        if let Ok(mut guard) = state.index.write() {
-            *guard = Arc::new(new_index);
-        }
-    }
+    refresh_index(&state);
 
     Json(serde_json::json!({"ok": true})).into_response()
 }
@@ -243,9 +256,11 @@ async fn handle_editor_css() -> impl IntoResponse {
     }
 }
 
-/// GET /api/notes — JSON list of all notes with metadata.
+/// GET /api/notes — JSON list of all notes with metadata. Rebuilds the index
+/// from disk on every call so notes added outside this server show up
+/// without a restart.
 async fn handle_api_notes(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let index = snapshot(&state);
+    let index = refresh_index(&state);
     let notes: Vec<_> = index
         .notes
         .values()
@@ -349,5 +364,36 @@ fn is_process_running(pid: u32) -> bool {
     {
         let _ = pid;
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+
+    #[tokio::test]
+    async fn api_notes_picks_up_files_added_after_startup() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("notes")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".granite")).unwrap();
+        std::fs::write(dir.path().join("notes/first.md"), "# First\n").unwrap();
+
+        let vault_path = Arc::new(dir.path().to_path_buf());
+        let index = Index::build(&vault_path).unwrap();
+        let state = AppState {
+            vault_path: vault_path.clone(),
+            index: Arc::new(RwLock::new(Arc::new(index))),
+        };
+
+        let before = handle_api_notes(State(state.clone())).await;
+        assert_eq!(before.0.as_array().unwrap().len(), 1);
+
+        // Simulate a note added by another process (e.g. `granite new`)
+        // while the server keeps running.
+        std::fs::write(dir.path().join("notes/second.md"), "# Second\n").unwrap();
+
+        let after = handle_api_notes(State(state)).await;
+        assert_eq!(after.0.as_array().unwrap().len(), 2);
     }
 }

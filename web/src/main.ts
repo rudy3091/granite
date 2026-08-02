@@ -47,7 +47,9 @@ function relativePath(path: string): string {
   return path.replace(/^notes\//, "");
 }
 
-async function loadNotes(): Promise<void> {
+// Re-fetches and redraws the sidebar list only — never touches the open
+// editor, so it's safe to call on a poll timer without disrupting typing.
+async function renderNoteList(): Promise<NoteSummary[]> {
   const notes: NoteSummary[] = await fetch("/api/notes").then((r) => r.json());
   notes.sort((a, b) => b.modified_ts - a.modified_ts);
   noteList.innerHTML = "";
@@ -56,6 +58,7 @@ async function loadNotes(): Promise<void> {
     const a = document.createElement("a");
     a.textContent = note.title;
     a.href = "#";
+    a.classList.toggle("active", relativePath(note.path) === activePath);
     a.addEventListener("click", (e) => {
       e.preventDefault();
       openNote(relativePath(note.path));
@@ -63,6 +66,11 @@ async function loadNotes(): Promise<void> {
     li.appendChild(a);
     noteList.appendChild(li);
   }
+  return notes;
+}
+
+async function loadNotes(): Promise<void> {
+  const notes = await renderNoteList();
   // The sidebar is hidden, so the most recently modified note is opened by
   // default — otherwise there's no way to get an editor onto the screen.
   if (notes.length > 0) {
@@ -113,3 +121,7 @@ window.addEventListener(
 );
 
 loadNotes();
+
+// Poll for notes added/changed outside this page (e.g. `granite new` in
+// another terminal) so the sidebar stays current without a manual refresh.
+setInterval(renderNoteList, 3000);
