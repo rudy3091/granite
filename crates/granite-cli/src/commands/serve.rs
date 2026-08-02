@@ -157,6 +157,7 @@ pub async fn run_daemon(vault_path: PathBuf, port: u16, index: Index) -> Result<
             get(handle_api_note).put(handle_save_note),
         )
         .route("/web/main.js", get(handle_editor_js))
+        .route("/web/style.css", get(handle_editor_css))
         .with_state(state);
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
@@ -227,6 +228,18 @@ async fn handle_editor_js() -> impl IntoResponse {
         )
             .into_response(),
         None => (StatusCode::NOT_FOUND, "main.js not found").into_response(),
+    }
+}
+
+/// GET /web/style.css — the embedded frontend stylesheet (built by `build.rs`).
+async fn handle_editor_css() -> impl IntoResponse {
+    match EditorAssets::get("style.css") {
+        Some(file) => (
+            [(axum::http::header::CONTENT_TYPE, "text/css")],
+            file.data.into_owned(),
+        )
+            .into_response(),
+        None => (StatusCode::NOT_FOUND, "main.css not found").into_response(),
     }
 }
 
