@@ -18,7 +18,7 @@ app.innerHTML = `
   <button id="sidebar-toggle" aria-label="Toggle note list"></button>
   <div id="sidebar">
     <h1>Granite</h1>
-    <ul id="note-list"></ul>
+    <ul id="note-list" tabindex="0"></ul>
   </div>
   <div id="main">
     <div id="toolbar">
@@ -40,6 +40,38 @@ const editorContainer = document.getElementById("editor")!;
 
 let handle: EditorHandle | null = null;
 let activePath: string | null = null;
+// The whole list is one focus stop (`tabindex=0` on the `<ul>`); this tracks
+// which entry the arrow keys point at within it.
+let selectedIndex = 0;
+
+function noteLinks(): HTMLAnchorElement[] {
+  return [...noteList.querySelectorAll("a")];
+}
+
+function paintSelection(): void {
+  const links = noteLinks();
+  selectedIndex = Math.min(Math.max(selectedIndex, 0), Math.max(links.length - 1, 0));
+  links.forEach((a, i) => a.classList.toggle("selected", i === selectedIndex));
+  if (noteList === document.activeElement) {
+    links[selectedIndex]?.scrollIntoView({ block: "nearest" });
+  }
+}
+
+noteList.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    selectedIndex += e.key === "ArrowDown" ? 1 : -1;
+    paintSelection();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    noteLinks()[selectedIndex]?.click();
+  } else if (e.key === "Tab" && e.shiftKey) {
+    // Sidebar sits before #main in the DOM, so the natural back-tab target is
+    // the toggle button, not the editor the user came from.
+    e.preventDefault();
+    handle?.focus();
+  }
+});
 
 // `path` from the API is rooted at the vault (`notes/...`); routes under
 // `/api/notes/*path` expect it relative to `notes/` instead.
@@ -58,6 +90,7 @@ async function renderNoteList(): Promise<NoteSummary[]> {
     const a = document.createElement("a");
     a.textContent = note.title;
     a.href = "#";
+    a.tabIndex = -1;
     a.classList.toggle("active", relativePath(note.path) === activePath);
     a.addEventListener("click", (e) => {
       e.preventDefault();
@@ -66,6 +99,11 @@ async function renderNoteList(): Promise<NoteSummary[]> {
     li.appendChild(a);
     noteList.appendChild(li);
   }
+  // The poll timer redraws every 3s; only re-sync the arrow-key cursor to the
+  // open note while the list isn't focused, so it can't yank a live selection.
+  const active = notes.findIndex((n) => relativePath(n.path) === activePath);
+  if (active >= 0 && noteList !== document.activeElement) selectedIndex = active;
+  paintSelection();
   return notes;
 }
 
@@ -114,7 +152,13 @@ window.addEventListener(
       handle?.save();
     } else if (e.key === "f") {
       e.preventDefault();
-      sidebar.classList.toggle("open");
+      const open = sidebar.classList.toggle("open");
+      if (open) {
+        noteList.focus();
+        paintSelection();
+      } else {
+        handle?.focus();
+      }
     }
   },
   { capture: true },
